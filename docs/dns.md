@@ -118,6 +118,9 @@ Not verified (no credentials were available to the author):
 
 ## Fallback: add the records in the UniFi UI
 
+No API credential at all? `scripts/udm-dns-mongo.sh` writes the two lab records over root SSH
+(mongo `static_dns` + Network app restart); it is what was used on 2026-10-07 when no API key existed.
+
 In Network 10.x, DNS records live in the Policy Engine. On 10.6.106 the screen labels are:
 **Settings → Policy Engine → Policy Table → Create New Policy → DNS Record**. Older 8.x/9.x
 builds had them under *Settings → Routing → DNS*. Create:

@@ -50,6 +50,7 @@ chmod 600 ~/.config/lab-k3s/secrets.env ~/.config/lab-k3s/udm.env ~/.config/clou
 cd ~/dev/lab-k3s
 sudo bootstrap/00-install-k3s.sh     # k3s + kubeconfig for jklein + helm
 bootstrap/10-secrets.sh              # namespaces + secrets from secrets.env (no sudo)
+export KUBECONFIG=$HOME/.kube/config # k3s' kubectl defaults to the root-only /etc/rancher/k3s/k3s.yaml
 bootstrap/20-argocd.sh               # Argo CD via helm, then the root app-of-apps (no sudo; main must already be pushed)
 ```
 
@@ -71,11 +72,22 @@ If `10-secrets.sh` generated a new Grafana password, it appended it to `secrets.
 The UDM's records survive a host rebuild. Re-assert them anyway (idempotent):
 
 ```
-scripts/udm-dns.sh ensure-lab        # *.lab.kleincogroup.com + lab.kleincogroup.com -> 192.168.4.243
+scripts/udm-dns.sh ensure-lab        # *.lab.kleincogroup.com + lab.kleincogroup.com -> 192.168.4.243 (needs udm.env)
+scripts/udm-dns-mongo.sh             # alternative with no API credential: root SSH, writes static_dns, restarts the Network app
 scripts/udm-dns.sh list
 dig +short whoami.lab.kleincogroup.com @192.168.4.1
 curl -sI https://whoami.lab.kleincogroup.com   # 200 with a valid cert once Argo CD is synced
 ```
+
+No API credential and no terminal? The UniFi web UI path (Network 10.x) is Settings > Policy
+Engine > Policy Table > Create New Policy > DNS Record (not available in the mobile app).
+
+## 4b. Claude Code integration
+
+Lives in the dotfiles repo, not here: the "The local k3s lab" section of `~/.claude/CLAUDE.md`,
+the skill `~/.claude/skills/lab-k3s/SKILL.md` (force-added; `.claude/skills` is otherwise
+gitignored there) and the `KUBECONFIG` export in `~/.config/shell/common.sh`. A bootstrapped
+box gets all three from `config pull`.
 
 ## 5. Cloudflare tunnel connector
 
