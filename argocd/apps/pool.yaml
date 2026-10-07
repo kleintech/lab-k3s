@@ -1,0 +1,35 @@
+# Pool & Spa guest web UI (kleintech/jandy-home-webui, public repo): the project's k8s/
+# kustomization from its main branch. https://pool.lab.kleincogroup.com on the LAN;
+# https://pool.kleincogroup.com through the tunnel behind Cloudflare Access (scripts/expose.sh).
+# The iAqualink credentials Secret (pool/iaqualink-credentials) is created by hand, never in git.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: pool
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/kleintech/jandy-home-webui.git
+    targetRevision: main
+    path: k8s
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: pool
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m
