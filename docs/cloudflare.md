@@ -27,8 +27,8 @@ them with `CF_ZONE` and `CF_TUNNEL`. It then refuses to continue if the name bel
 something else:
 
 - the name has a DNS record other than a CNAME to this tunnel;
-- the tunnel already routes the name to a **different origin**, such as
-  `fishmaps.kleincogroup.com → http://localhost:8000`, unless you pass `--replace`;
+- the tunnel already routes the name to a **different origin** (a non-cluster service on
+  the same host), unless you pass `--replace`;
 - an Access app it didn't create covers the name. That includes apps matched by `domain`,
   `self_hosted_domains` or `destinations[].uri`, and wildcard apps like `*.kleincogroup.com`;
 - the name is reserved by policy: `home` is the UDM's DDNS record, `lab` is the internal
@@ -105,7 +105,7 @@ through Cloudflare must sign in, and only the listed emails are allowed.
 
 **The gate only applies to traffic that comes through Cloudflare.** On the LAN, the UDM
 answers `<name>.kleincogroup.com` with 192.168.4.243, so every LAN and VLAN client,
-including IoT, goes straight to Traefik and never sees Access. The same service is also
+on any VLAN that can route to the host, goes straight to Traefik and never sees Access. The same service is also
 reachable on its `<name>.lab.kleincogroup.com` name. If the app needs authentication
 against LAN clients too, it has to do that itself.
 

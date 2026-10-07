@@ -1,7 +1,7 @@
 # lab-k3s conventions (read before adding anything)
 
 Single-node k3s on `notatonix` (Ubuntu 26.04, 16 cores / 30 GiB, 192.168.4.243 on the
-"Parent" VLAN 3, fixed DHCP lease on the UDM Pro at 192.168.4.1). Everything that runs on
+fixed DHCP lease, UDM Pro gateway at 192.168.4.1). Everything that runs on
 the cluster is declared in this repo and reconciled by Argo CD from branch `main`.
 The repo is on GitHub at `kleintech/lab-k3s`. **No secrets in this repo, ever.**
 

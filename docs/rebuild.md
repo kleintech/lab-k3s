@@ -24,7 +24,7 @@ to you before you need it (see "Backups" at the end).
 ## 1. Base OS
 
 - Ubuntu with a user `jklein`, hostname `notatonix`.
-- The UDM gives this box a fixed lease of **192.168.4.243** on Parent (VLAN 3), keyed to
+- The UDM gives this box a fixed lease of **192.168.4.243**, keyed to
   the **Wi-Fi** NIC's MAC (`wlp4s0`; see the client in the UniFi app). Switching to the wired
   NIC (`enp5s0`) or to new hardware means a new MAC. Edit the fixed IP in the UniFi UI
   (Client → Settings → Fixed IP Address) or everything below points at the wrong address.
@@ -123,12 +123,12 @@ connector has to be reinstalled:
 4. The ingress rules come back with the connector (they're stored at Cloudflare). For each
    name that **`expose.sh` created** (CNAME comment `lab-k3s expose.sh ...`), re-assert the
    full set, including the UDM record: `scripts/expose.sh <name> --public` or
-   `--gated --allow-email ...`. Don't do this for routes made by hand, such as `fishmaps`
-   (→ `http://localhost:8000`). `expose.sh` refuses those unless you pass `--replace`, which
-   would point them at Traefik.
+   `--gated --allow-email ...`. Don't do this for routes made by hand (other services on
+   this host that the tunnel also serves). `expose.sh` refuses those unless you pass
+   `--replace`, which would point them at Traefik.
 
 Non-cluster services published through the same tunnel come back only when you restart
-whatever listens on their port (e.g. `fishmaps.kleincogroup.com` → `http://localhost:8000`).
+whatever listens on their port.
 
 ## 6. Data
 

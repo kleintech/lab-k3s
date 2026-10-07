@@ -46,7 +46,7 @@ The Cloudflare pieces assume a zone on Cloudflare and an existing named tunnel.
 | Argo CD (deploys) | https://argocd.lab.kleincogroup.com | `admin` / `kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' \| base64 -d` |
 | Grafana (dashboards) | https://grafana.lab.kleincogroup.com | `admin` / `GRAFANA_ADMIN_PASSWORD` in `~/.config/lab-k3s/secrets.env` |
 | Prometheus / Alertmanager | in-cluster only (`kubectl -n monitoring port-forward`) | none |
-| Image registry | https://registry.lab.kleincogroup.com | none (source-IP allow-list: Parent/Default/VPN VLANs + pods) |
+| Image registry | https://registry.lab.kleincogroup.com | none (source-IP allow-list: trusted LAN subnets, VPN, pods) |
 | Traefik dashboard | https://traefik.lab.kleincogroup.com/dashboard/ | none (same allow-list) |
 | whoami (smoke test) | https://whoami.lab.kleincogroup.com | none |
 | GitHub Actions runners | label `runs-on: lab-k3s`, one runner set per listed private repo | see [docs/ci.md](docs/ci.md) |

@@ -1,6 +1,6 @@
 # Who may talk to the unauthenticated, delete-enabled registry. The UDM does not isolate
-# VLANs, so without this the IoT VLAN (192.168.2.0/24) could overwrite image tags.
-# Allowed: Parent VLAN (this host + family PCs), Default VLAN, L2TP VPN, and cluster pods
+# VLANs by default, so without this any device on an untrusted VLAN could overwrite image tags.
+# Allowed: the trusted LAN subnets, the VPN subnet, and cluster pods
 # (CI runners hairpin via the node IP / svclb, so both 10.42/16 and the node IP are listed).
 apiVersion: traefik.io/v1alpha1
 kind: Middleware

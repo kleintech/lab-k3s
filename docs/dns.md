@@ -4,7 +4,7 @@
 
 | name | answered by | resolves to | who uses it |
 |------|-------------|-------------|-------------|
-| `*.lab.kleincogroup.com`, `lab.kleincogroup.com` | UDM Pro (LAN only) | `192.168.4.243` (notatonix) | every internal service |
+| `*.lab.kleincogroup.com`, `lab.kleincogroup.com` | UDM Pro (LAN only) | `192.168.4.243` (the lab host) | every internal service |
 | `<name>.kleincogroup.com` (exposed services only) | UDM Pro on the LAN; Cloudflare everywhere else | LAN: `192.168.4.243`. Internet: Cloudflare edge, then the `homelab` tunnel | services published with `scripts/expose.sh` |
 
 Traefik on notatonix terminates TLS for both with wildcard Let's Encrypt certs. cert-manager
@@ -140,27 +140,21 @@ dig +short lab.kleincogroup.com @192.168.4.1            # -> 192.168.4.243
 
 ## VLANs: who can reach 192.168.4.243
 
-notatonix is on **Parent (VLAN 3, 192.168.4.0/24)**. The UDM serves DNS on `br0`, `br2` and `br3`
-(Default, IoT, Parent), and every network hands out the UDM as its DNS server. So clients on
-every VLAN *resolve* the lab names. Whether they can *connect* is a firewall question.
-
-State on 2026-10-07: the site still uses legacy firewall rules (the zone-based firewall's
-`firewall_zone` collection is empty), and no network has isolation enabled. The only
-inter-VLAN rule is **"Drop & Log IoT to Default Net Traffic"** (LAN_OUT). Inter-VLAN routing
-is otherwise allowed, so Default (192.168.1.0/24) and IoT clients can reach
-192.168.4.243:443. The L2TP VPN (192.168.5.0/24) is explicitly allowed.
-
-How to check after any firewall change:
+The UDM serves DNS on every LAN network, so clients on every VLAN *resolve* the lab names.
+Whether they can *connect* is a firewall question, and that is deliberately not documented
+here. How to check after any firewall change:
 
 - UI: **Settings → Security → Firewall** (legacy rules), or **Zone-Based Firewall /
-  Policy Table** after a migration. Look for rules dropping traffic to 192.168.4.0/24 or
-  the Parent network, and for **Network Isolation** on the source network.
+  Policy Table** after a migration. Look for rules dropping traffic to the lab host's
+  network, and for **Network Isolation** on the source network.
 - From a client on that VLAN:
   `curl -sI https://whoami.lab.kleincogroup.com` should return HTTP 200. If you get a
   timeout while `dig` still answers 192.168.4.243, the firewall is in the way, not DNS.
 
-If a VLAN is ever isolated, either allow it to reach `192.168.4.243` TCP 80/443, or have
-those users go through the public `<name>.kleincogroup.com` names (tunnel).
+If a VLAN is isolated, either allow it to reach `192.168.4.243` TCP 80/443, or have those
+users go through the public `<name>.kleincogroup.com` names (tunnel). The registry and the
+Traefik dashboard additionally carry a source-IP allow-list (`lan-only` Middlewares), which
+is the place to add or remove a subnet.
 
 ## Off the LAN
 
@@ -169,10 +163,8 @@ those users go through the public `<name>.kleincogroup.com` names (tunnel).
 1. **Publish one service** with `scripts/expose.sh <name> --public|--gated`. It becomes
    `https://<name>.kleincogroup.com` via the Cloudflare tunnel, optionally behind
    Cloudflare Access. See [cloudflare.md](cloudflare.md).
-2. **VPN in** with the UDM's L2TP VPN (192.168.5.0/24). The firewall explicitly allows that
-   subnet. The L2TP network has no custom DNS servers set, so clients should get the UDM as
-   their resolver and the lab names should work as on the LAN. This is unverified: check
-   with `dig lab.kleincogroup.com` while connected.
+2. **A VPN into the LAN** whose clients use the UDM as resolver; the lab names then work as
+   on the LAN (check with `dig lab.kleincogroup.com` while connected).
 
 ## Troubleshooting
 

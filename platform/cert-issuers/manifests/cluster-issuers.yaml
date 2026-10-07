@@ -8,7 +8,6 @@ metadata:
 spec:
   acme:
     server: https://acme-v02.api.letsencrypt.org/directory
-    email: kleintech@gmail.com
     privateKeySecretRef:
       name: letsencrypt-dns-account-key
     solvers:
@@ -25,7 +24,6 @@ metadata:
 spec:
   acme:
     server: https://acme-staging-v02.api.letsencrypt.org/directory
-    email: kleintech@gmail.com
     privateKeySecretRef:
       name: letsencrypt-staging-account-key
     solvers:
