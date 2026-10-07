@@ -4,6 +4,7 @@
 #
 #   scripts/expose.sh [-n] <name> --public
 #   scripts/expose.sh [-n] <name> --gated --allow-email a@x.com [--allow-email b@y.com ...] [--add-otp]
+#                     [--idp <type> ...] [--session-duration <dur>]
 #
 #   -n             dry run: look everything up, print the API calls that would be made
 #   --public       anyone on the Internet can reach it (refuses if an Access app already gates it)
@@ -12,6 +13,12 @@
 #   --allow-email  repeatable; required with --gated (re-running replaces the list)
 #   --add-otp      with --gated: if the account has no login method at all, add the
 #                  One-time PIN identity provider so the listed emails can sign in
+#   --idp          with --gated, repeatable: only allow login methods of this type (e.g. google,
+#                  onetimepin); they must already exist under Zero Trust > Settings >
+#                  Authentication. With exactly one, the login page goes straight to it.
+#                  Default: every login method on the account.
+#   --session-duration  with --gated: how long a login lasts, e.g. 24h (default), 168h, 730h
+#                  (730h = 1 month, Cloudflare's maximum)
 #   --replace      allow replacing an existing tunnel route for this name that points at a
 #                  different origin (e.g. a non-cluster service on another port)
 #
@@ -29,8 +36,8 @@ set -euo pipefail
 
 usage() { sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
 
-MODE="" NAME="" ADD_OTP=0 REPLACE=0
-EMAILS=()
+MODE="" NAME="" ADD_OTP=0 REPLACE=0 SESSION="24h"
+EMAILS=() IDP_TYPES=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -n|--dry-run) DRY_RUN=1 ;;
@@ -39,6 +46,10 @@ while [[ $# -gt 0 ]]; do
     --allow-email) [[ $# -ge 2 ]] || usage; EMAILS+=("${2,,}"); shift ;;
     --allow-email=*) e="${1#*=}"; EMAILS+=("${e,,}") ;;
     --add-otp) ADD_OTP=1 ;;
+    --idp) [[ $# -ge 2 ]] || usage; IDP_TYPES+=("${2,,}"); shift ;;
+    --idp=*) e="${1#*=}"; IDP_TYPES+=("${e,,}") ;;
+    --session-duration) [[ $# -ge 2 ]] || usage; SESSION="$2"; shift ;;
+    --session-duration=*) SESSION="${1#*=}" ;;
     --replace) REPLACE=1 ;;
     -h|--help) usage ;;
     -*) die "unknown option $1" ;;
@@ -54,8 +65,13 @@ reserved_label "$NAME" && die "'$NAME' is reserved in this zone"
 if [[ "$MODE" == gated ]]; then
   [[ ${#EMAILS[@]} -gt 0 ]] || die "--gated needs at least one --allow-email"
   for e in "${EMAILS[@]}"; do [[ "$e" =~ ^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$ ]] || die "bad email '$e'"; done
+  [[ "$SESSION" =~ ^[0-9]+(h|m|s)$ ]] || die "bad --session-duration '$SESSION' (use e.g. 24h, 730h)"
+  if [[ "$SESSION" == *h && "${SESSION%h}" -gt 730 ]]; then
+    die "--session-duration ${SESSION} is over Cloudflare's 1-month maximum (730h)"
+  fi
 else
   [[ ${#EMAILS[@]} -eq 0 ]] || die "--allow-email only makes sense with --gated"
+  [[ ${#IDP_TYPES[@]} -eq 0 && "$SESSION" == "24h" ]] || die "--idp/--session-duration only make sense with --gated"
 fi
 FQDN="${NAME}.${CF_ZONE}"
 export DRY_RUN
@@ -121,6 +137,17 @@ if [[ "$MODE" == gated ]]; then
     fi
   fi
 
+  # Restrict the app to the requested login method types (they must exist already).
+  IDP_IDS="[]"
+  if [[ ${#IDP_TYPES[@]} -gt 0 ]]; then
+    IDP_IDS="$(jq -c '[.[] | select(.type as $t | $ARGS.positional | index($t)) | .id]' --args "${IDP_TYPES[@]}" <<<"$idps")"
+    for t in "${IDP_TYPES[@]}"; do
+      jq -e --arg t "$t" 'any(.[]; .type == $t)' <<<"$idps" >/dev/null \
+        || die "no '$t' login method on the account (add it under Zero Trust > Settings > Authentication); nothing was changed"
+    done
+    log "Access: login limited to ${IDP_TYPES[*]} ($(jq length <<<"$IDP_IDS") method(s))"
+  fi
+
   pname="$(policy_name "$FQDN")"
   pbody="$(jq -cn --arg n "$pname" '{name:$n, decision:"allow",
             include:[$ARGS.positional[] | {email:{email:.}}], exclude:[], require:[]}' --args "${EMAILS[@]}")"
@@ -136,9 +163,12 @@ if [[ "$MODE" == gated ]]; then
     cf_write PUT "/accounts/${ACCOUNT_ID}/access/policies/${PID}" "$pbody" || die "updating the Access policy failed"
   fi
 
-  abody="$(jq -cn --arg n "$(app_name "$FQDN")" --arg d "$FQDN" --arg p "$PID" \
-    '{type:"self_hosted", name:$n, domain:$d, session_duration:"24h", app_launcher_visible:false,
-      policies:[{id:$p, precedence:1}]}')"
+  abody="$(jq -cn --arg n "$(app_name "$FQDN")" --arg d "$FQDN" --arg p "$PID" --arg s "$SESSION" \
+    --argjson idps "$IDP_IDS" \
+    '{type:"self_hosted", name:$n, domain:$d, session_duration:$s, app_launcher_visible:false,
+      policies:[{id:$p, precedence:1}]}
+     + (if ($idps | length) > 0
+        then {allowed_idps:$idps, auto_redirect_to_identity:(($idps | length) == 1)} else {} end)')"
   if [[ "$(jq length <<<"$OUR_APPS")" == 0 ]]; then
     log "Access: creating self-hosted app for $FQDN"
     cf_write POST "/accounts/${ACCOUNT_ID}/access/apps" "$abody" \

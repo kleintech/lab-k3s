@@ -8,6 +8,7 @@ notatonix. Nothing on the router is opened.
 ```
 scripts/expose.sh   <name> --public
 scripts/expose.sh   <name> --gated --allow-email you@example.com [--allow-email ...] [--add-otp]
+                    [--idp google] [--session-duration 730h]   # login method(s), session length (max 1 month)
 scripts/unexpose.sh <name>                 # remove all of it
 scripts/unexpose.sh --access-only <name>   # drop the Access gate; the name stays published
 # -n on any of them: dry run. Reads still happen; writes are printed instead of sent.
