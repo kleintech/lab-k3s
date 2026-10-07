@@ -1,0 +1,6 @@
+*.env
+!*.env.example
+secrets*/
+.claude/worktrees
+*.key
+*.pem
