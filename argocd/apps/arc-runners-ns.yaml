@@ -1,10 +1,8 @@
-# In-cluster OCI registry: https://registry.lab.kleincogroup.com (no auth; Traefik ipAllowList restricts it to trusted VLANs + pods).
-# Plain manifests in platform/registry/manifests. Wave 0.
-# No resources finalizer: deleting this Application must not delete the PVC holding every image.
+# Namespace-level guard rails for the runner pods (LimitRange). Wave 0, before arc-runners (1).
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: registry
+  name: arc-runners-ns
   namespace: argocd
   annotations:
     argocd.argoproj.io/sync-wave: "0"
@@ -13,12 +11,12 @@ spec:
   source:
     repoURL: https://github.com/kleintech/lab-k3s.git
     targetRevision: main
-    path: platform/registry/manifests
+    path: platform/ci/manifests
     directory:
       recurse: true
   destination:
     server: https://kubernetes.default.svc
-    namespace: registry
+    namespace: arc-runners
   syncPolicy:
     automated:
       prune: true
@@ -26,9 +24,3 @@ spec:
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true
-    retry:
-      limit: 10
-      backoff:
-        duration: 10s
-        factor: 2
-        maxDuration: 5m

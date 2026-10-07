@@ -9,5 +9,5 @@ helm repo update argo >/dev/null
 helm upgrade --install argocd argo/argo-cd -n argocd --create-namespace \
   --version "$ARGOCD_CHART_VERSION" -f platform/argocd/values.yaml --wait --timeout 10m
 kubectl apply -f argocd/root-app.yaml
-echo "Argo CD admin password:"; kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d; echo
+echo "Argo CD admin password:"; kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' 2>/dev/null | base64 -d || echo "(initial admin secret already deleted)"; echo
 echo "UI: https://argocd.lab.kleincogroup.com (after certs are issued; before that: kubectl -n argocd port-forward svc/argocd-server 8080:443)"

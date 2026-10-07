@@ -169,11 +169,13 @@ Registry images, only if rebuilding them is painful (stop the registry first so 
 consistent):
 
 ```
+# Argo CD selfHeal would scale it straight back up: pause the root and registry apps first
+# (see platform/registry/README.md for the full pause/resume recipe), then
 kubectl -n registry scale deploy --all --replicas=0
 sudo tar -C /var/lib/rancher/k3s/storage -czf registry-$(date +%F).tgz $(sudo ls /var/lib/rancher/k3s/storage | grep _registry_)
 kubectl -n registry scale deploy --all --replicas=1
 ```
 
-To restore: once Argo CD has created the PVC, scale the registry to 0, untar into
+To restore: once Argo CD has created the PVC, pause the root and registry apps as above, scale the registry to 0, untar into
 `/var/lib/rancher/k3s/storage/`, renaming the extracted directory to the new PV's
-directory name (the PV name changes), then scale back to 1.
+directory name (the PV name changes), then re-enable the root app's automated sync (selfHeal scales it back to 1).

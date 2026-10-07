@@ -4,7 +4,7 @@
 # Idempotent: re-running upgrades/ reconfigures k3s in place.
 set -euo pipefail
 
-K3S_VERSION="${K3S_VERSION:-}"            # empty = latest stable channel
+K3S_VERSION="${K3S_VERSION:-v1.36.5+k3s1}"  # pinned: the traefik HelmChartConfig is written against this release's bundled chart
 NODE_IP="${NODE_IP:-192.168.4.243}"       # fixed DHCP lease on the UDM
 TARGET_USER="${SUDO_USER:-${USER}}"
 TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
@@ -20,10 +20,15 @@ tls-san:
   - ${NODE_IP}
   - k3s.lab.kleincogroup.com
   - notatonix
-write-kubeconfig-mode: "0644"
+write-kubeconfig-mode: "0600"
 # traefik + servicelb stay enabled (defaults); we customise traefik via HelmChartConfig.
+# systemd-resolved: point kubelet at the real upstream list, not the 127.0.0.53 stub
+resolv-conf: /run/systemd/resolve/resolv.conf
+# this is also a desktop/dev box: keep memory back from pods and evict before the host swaps to death
 kubelet-arg:
   - "max-pods=250"
+  - "system-reserved=memory=10Gi,cpu=2"
+  - "eviction-hard=memory.available<1Gi,nodefs.available<5%,imagefs.available<5%"
 CFG
 
 export INSTALL_K3S_CHANNEL="${INSTALL_K3S_CHANNEL:-stable}"
@@ -32,6 +37,7 @@ curl -sfL https://get.k3s.io | sh -
 
 # kubeconfig for the user
 install -d -o "$TARGET_USER" -g "$TARGET_USER" -m 0700 "$TARGET_HOME/.kube"
+if [[ -f "$TARGET_HOME/.kube/config" ]]; then cp -p "$TARGET_HOME/.kube/config" "$TARGET_HOME/.kube/config.bak-$(date +%s)"; fi
 install -o "$TARGET_USER" -g "$TARGET_USER" -m 0600 /etc/rancher/k3s/k3s.yaml "$TARGET_HOME/.kube/config"
 sed -i "s#https://127.0.0.1:6443#https://${NODE_IP}:6443#" "$TARGET_HOME/.kube/config"
 
@@ -41,7 +47,7 @@ if ! command -v helm >/dev/null; then
 fi
 
 echo "waiting for node Ready..."
-for i in $(seq 1 60); do
+for _ in $(seq 1 60); do
   if kubectl get node -o jsonpath='{.items[0].status.conditions[?(@.type=="Ready")].status}' 2>/dev/null | grep -q True; then break; fi
   sleep 2
 done

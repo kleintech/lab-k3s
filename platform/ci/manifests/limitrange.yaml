@@ -1,0 +1,16 @@
+# The dind sidecar in containerMode=dind cannot be given resources through the chart, so cap
+# every container in arc-runners by default. Containers that set their own limits keep them.
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: runner-defaults
+  namespace: arc-runners
+spec:
+  limits:
+    - type: Container
+      default:
+        memory: 4Gi
+        cpu: "4"
+      defaultRequest:
+        memory: 256Mi
+        cpu: 100m

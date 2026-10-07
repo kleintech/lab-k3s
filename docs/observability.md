@@ -25,7 +25,7 @@ node-exporter, kube-state-metrics and prometheus-operator. Argo CD deploys it
   ```sh
   kubectl -n monitoring exec deploy/kube-prometheus-stack-grafana -c grafana -- \
     grafana cli admin reset-admin-password \
-    "$(grep '^GRAFANA_ADMIN_PASSWORD=' ~/.config/lab-k3s/secrets.env | cut -d= -f2-)"
+    "$(kubectl -n monitoring get secret grafana-admin -o jsonpath='{.data.admin-password}' | base64 -d)"
   kubectl -n monitoring rollout restart deploy/kube-prometheus-stack-grafana
   ```
 

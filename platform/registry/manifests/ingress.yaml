@@ -9,6 +9,9 @@ metadata:
   namespace: registry
   labels:
     app.kubernetes.io/name: registry
+  annotations:
+    # no auth on the registry, so restrict sources to the trusted VLANs + pods (see lan-only.yaml)
+    traefik.ingress.kubernetes.io/router.middlewares: registry-lan-only@kubernetescrd
 spec:
   ingressClassName: traefik
   tls:

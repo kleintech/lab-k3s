@@ -39,10 +39,13 @@ spec:
         allowCrossNamespace: true
     api:
       dashboard: true
-    # LAN-only (no public DNS for *.lab), so no auth middleware.
-    # tls is inherited from the websecure entrypoint; the cert comes from the default TLSStore.
+    # No auth on the dashboard; source-IP allow-list instead (Middleware in tlsstore.yaml's
+    # sibling file lan-only.yaml). tls comes from the websecure entrypoint / default TLSStore.
     ingressRoute:
       dashboard:
         enabled: true
         matchRule: Host(`traefik.lab.kleincogroup.com`)
         entryPoints: ["websecure"]
+        middlewares:
+          - name: lan-only
+            namespace: kube-system

@@ -14,7 +14,11 @@ GITHUB_RUNNER_TOKEN="${GITHUB_RUNNER_TOKEN:-}"
 if [[ -z "$GRAFANA_ADMIN_PASSWORD" ]]; then
   GRAFANA_ADMIN_PASSWORD="$(head -c 24 /dev/urandom | base64 | tr -d '/+=' | head -c 24)"
   mkdir -p "$(dirname "$ENV_FILE")"; touch "$ENV_FILE"; chmod 600 "$ENV_FILE"
-  printf 'GRAFANA_ADMIN_PASSWORD=%s\n' "$GRAFANA_ADMIN_PASSWORD" >> "$ENV_FILE"
+  if grep -q '^GRAFANA_ADMIN_PASSWORD=' "$ENV_FILE"; then
+    sed -i "s|^GRAFANA_ADMIN_PASSWORD=.*|GRAFANA_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}|" "$ENV_FILE"
+  else
+    printf 'GRAFANA_ADMIN_PASSWORD=%s\n' "$GRAFANA_ADMIN_PASSWORD" >> "$ENV_FILE"
+  fi
   echo "generated GRAFANA_ADMIN_PASSWORD and saved it to $ENV_FILE"
 fi
 

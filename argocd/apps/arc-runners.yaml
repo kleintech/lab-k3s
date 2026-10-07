@@ -21,9 +21,10 @@ spec:
   goTemplateOptions: ["missingkey=error"]
   generators:
     - list:
-        elements:
-          - repo: lab-k3s
-          # - repo: my-other-repo
+        # PRIVATE repos only (docs/ci.md): runner pods are privileged dind on the LAN node.
+        # kleintech/lab-k3s is public and has no workflows, so it is deliberately not listed.
+        elements: []
+          # - repo: my-private-repo
   template:
     metadata:
       name: 'arc-runners-{{ .repo }}'

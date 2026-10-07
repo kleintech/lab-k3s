@@ -14,7 +14,7 @@ scaleSetLabels:
   - lab-k3s
 
 minRunners: 0   # scale to zero when idle
-maxRunners: 4   # per repo; each runner pod is privileged dind, see docs/ci.md
+maxRunners: 2   # per repo; each runner pod is privileged dind, see docs/ci.md
 
 # Docker-in-Docker: a privileged docker:dind sidecar per runner pod, so jobs can
 # `docker build` / `docker push` directly.
@@ -27,7 +27,7 @@ template:
   spec:
     containers:
       - name: runner
-        image: ghcr.io/actions/actions-runner:latest
+        image: ghcr.io/actions/actions-runner:2.338.0
         command: ["/home/runner/run.sh"]
         resources:
           requests:
