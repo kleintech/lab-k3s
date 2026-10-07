@@ -1,0 +1,48 @@
+# Replace every "myapp" with the service name (also in service.yaml, ingress.yaml,
+# kustomization.yaml). The image tag is set in kustomization.yaml, not here.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp
+  labels:
+    app.kubernetes.io/name: myapp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: myapp
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: myapp
+    spec:
+      securityContext:
+        runAsNonRoot: true
+      containers:
+        - name: myapp
+          # Tag/digest is overridden by `images:` in kustomization.yaml.
+          image: registry.lab.kleincogroup.com/myproject/myapp
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: PORT
+              value: "8080"
+          # Point these at a real health endpoint; delete them if the app has none.
+          readinessProbe:
+            httpGet: {path: /, port: http}
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /, port: http}
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]

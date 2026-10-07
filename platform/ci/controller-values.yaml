@@ -1,0 +1,28 @@
+# Values for the gha-runner-scale-set-controller chart (ARC controller), installed by
+# argocd/apps/arc-controller.yaml into namespace arc-systems with releaseName "arc".
+# Chart defaults: https://github.com/actions/actions-runner-controller/blob/master/charts/gha-runner-scale-set-controller/values.yaml
+
+# Pin the ServiceAccount name instead of relying on the generated "<release>-gha-rs-controller".
+# platform/ci/runner-values.yaml references this exact name (controllerServiceAccount.name):
+# without it the runner chart falls back to a Helm `lookup` of the controller Deployment,
+# which returns nothing under Argo CD (it renders with `helm template`) and fails the render.
+serviceAccount:
+  create: true
+  name: arc-gha-rs-controller
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    memory: 512Mi
+
+flags:
+  logLevel: info        # chart default is "debug"
+  logFormat: text
+  # Don't copy Argo CD's tracking label from the AutoscalingRunnerSet onto the
+  # listener / ephemeral-runner resources ARC creates at runtime; if it propagates,
+  # Argo CD sees those as its own and prunes them (actions-runner-controller#3533).
+  excludeLabelPropagationPrefixes:
+    - "argocd.argoproj.io/instance"
+    - "app.kubernetes.io/instance"

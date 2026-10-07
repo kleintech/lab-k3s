@@ -1,0 +1,155 @@
+# kube-prometheus-stack values for the lab (single-node k3s on notatonix).
+# Chart version is pinned in argocd/apps/monitoring.yaml (targetRevision).
+# Upstream defaults: https://github.com/prometheus-community/helm-charts/blob/main/charts/kube-prometheus-stack/values.yaml
+
+# ---------------------------------------------------------------------------
+# Control-plane components: disable their dedicated jobs on k3s.
+# k3s runs the apiserver, scheduler, controller-manager, kubelet and kube-proxy in ONE
+# process with ONE Prometheus registry. Every k3s metrics endpoint therefore serves all of their
+# metrics (docs.k3s.io/reference/metrics), and they already reach us through the
+# apiserver and kubelet jobs. The dedicated scheduler/controller-manager/kube-proxy
+# endpoints are bound to 127.0.0.1, and single-server k3s uses SQLite (kine), not etcd. The
+# chart's ServiceMonitors for them would find no targets, and their *Down alerts would
+# fire forever. Disabling a component also drops its rules and dashboards.
+# ---------------------------------------------------------------------------
+kubeEtcd:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeProxy:
+  enabled: false
+# kube-apiserver and CoreDNS (k3s ships it as kube-dns with metrics on :9153) stay at the
+# chart defaults (enabled).
+
+kubelet:
+  serviceMonitor:
+    # The list replaces the chart default, so its csi/storage bucket drop is repeated here.
+    metricRelabelings:
+      - action: drop
+        sourceLabels: [__name__, le]
+        regex: (csi_operations|storage_operation_duration)_seconds_bucket;(0.25|2.5|15|25|120|600)(\.0)?
+      # k3s' shared registry makes the kubelet endpoint serve every apiserver/etcd(kine)
+      # series too. The apiserver job already has them (with the chart's bucket drops), so
+      # drop the unfiltered duplicates here. No rendered rule or dashboard reads
+      # apiserver_*/etcd_* from job="kubelet" (checked against chart 92.1.0).
+      - action: drop
+        sourceLabels: [__name__]
+        regex: (apiserver|etcd)_.*
+
+kubeStateMetrics:
+  enabled: true
+nodeExporter:
+  enabled: true
+
+# ---------------------------------------------------------------------------
+# Grafana  (https://grafana.lab.kleincogroup.com)
+# ---------------------------------------------------------------------------
+grafana:
+  enabled: true
+  admin:
+    # Created by bootstrap/10-secrets.sh from ~/.config/lab-k3s/secrets.env.
+    existingSecret: grafana-admin
+    userKey: admin-user
+    passwordKey: admin-password
+  ingress:
+    enabled: true
+    ingressClassName: traefik
+    hosts:
+      - grafana.lab.kleincogroup.com
+    path: /
+    # No secretName: Traefik's default TLSStore serves the *.lab.kleincogroup.com wildcard.
+    tls:
+      - hosts:
+          - grafana.lab.kleincogroup.com
+  persistence:
+    enabled: true
+    type: pvc
+    storageClassName: local-path
+    accessModes:
+      - ReadWriteOnce
+    size: 5Gi
+    annotations:
+      # local-path deletes the data with the claim. Keep Argo from pruning it if values change.
+      argocd.argoproj.io/sync-options: Prune=false,Delete=false
+  # Grafana's SQLite DB lives on that RWO volume. Recreate keeps two pods from opening it at once during a rollout.
+  deploymentStrategy:
+    type: Recreate
+  grafana.ini:
+    server:
+      root_url: https://grafana.lab.kleincogroup.com
+    analytics:
+      check_for_updates: false
+      reporting_enabled: false
+  resources:
+    requests:
+      cpu: 50m
+      memory: 192Mi
+    limits:
+      memory: 512Mi
+  # Dashboards: any ConfigMap labelled grafana_dashboard="1" in any namespace is loaded
+  # (chart default: sidecar.dashboards.searchNamespace=ALL). See docs/observability.md.
+
+# ---------------------------------------------------------------------------
+# Prometheus
+# ---------------------------------------------------------------------------
+prometheus:
+  prometheusSpec:
+    retention: 15d
+    # Prometheus deletes the oldest blocks once the TSDB (WAL included) reaches this size.
+    # Units are powers of 2, so this is 17GiB of the 20Gi request. local-path does not enforce
+    # PVC sizes, so this cap is what actually keeps Prometheus from filling the host disk.
+    retentionSize: 17GB
+    # Without these, Prometheus only selects ServiceMonitors/PodMonitors/etc. that carry
+    # this Helm release's label. With them set to false, it selects every one in any namespace.
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    probeSelectorNilUsesHelmValues: false
+    scrapeConfigSelectorNilUsesHelmValues: false
+    resources:
+      requests:
+        cpu: 200m
+        memory: 1Gi
+      limits:
+        memory: 4Gi
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: local-path
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 20Gi
+
+# ---------------------------------------------------------------------------
+# Alertmanager (no receivers yet; alerts are visible in Grafana / the AM UI via port-forward)
+# ---------------------------------------------------------------------------
+alertmanager:
+  enabled: true
+  alertmanagerSpec:
+    resources:
+      requests:
+        cpu: 10m
+        memory: 64Mi
+      limits:
+        memory: 256Mi
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: local-path
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 2Gi
+
+prometheusOperator:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 512Mi

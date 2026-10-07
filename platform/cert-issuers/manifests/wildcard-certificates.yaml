@@ -1,0 +1,38 @@
+# The two wildcard certs Traefik's default TLSStore serves (platform/traefik/manifests).
+# They must live in kube-system, next to Traefik.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: wildcard-lab-kleincogroup-com
+  namespace: kube-system
+spec:
+  secretName: wildcard-lab-kleincogroup-com
+  dnsNames:
+    - "*.lab.kleincogroup.com"
+    - lab.kleincogroup.com
+  issuerRef:
+    group: cert-manager.io
+    kind: ClusterIssuer
+    name: letsencrypt-dns
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: wildcard-kleincogroup-com
+  namespace: kube-system
+spec:
+  secretName: wildcard-kleincogroup-com
+  dnsNames:
+    - "*.kleincogroup.com"
+  issuerRef:
+    group: cert-manager.io
+    kind: ClusterIssuer
+    name: letsencrypt-dns
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always

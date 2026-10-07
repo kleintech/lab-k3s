@@ -1,0 +1,27 @@
+# https://registry.lab.kleincogroup.com - TLS by Traefik's default TLSStore (wildcard), so no secretName.
+# Traefik streams request bodies (no size limit unless a Buffering middleware is added), so
+# large layers need no annotation here. Traefik's entrypoint readTimeout (default 60s, which
+# covers the whole request body) would abort slow layer uploads. platform/traefik sets it to 0.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: registry
+  namespace: registry
+  labels:
+    app.kubernetes.io/name: registry
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - registry.lab.kleincogroup.com
+  rules:
+    - host: registry.lab.kleincogroup.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: registry
+                port:
+                  number: 5000

@@ -1,0 +1,75 @@
+# Docker Distribution ("registry") v3. Image pinned by tag + multi-arch index digest
+# (verified on Docker Hub, library/registry:3.1.2, 2026-10-07).
+# Config: the image's built-in /etc/distribution/config.yml (filesystem storage at
+# /var/lib/registry, listening on :5000) plus REGISTRY_* env overrides.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: registry
+  namespace: registry
+  labels:
+    app.kubernetes.io/name: registry
+spec:
+  replicas: 1
+  # One writer on a ReadWriteOnce volume. Never run two registry pods on the same storage.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: registry
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: registry
+    spec:
+      securityContext:
+        # local-path creates volume dirs with mode 0777, so a non-root UID can write. No fsGroup:
+        # it isn't needed, and it would recursively chown the whole store on every mount.
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: registry
+          image: registry:3.1.2@sha256:ddf754342cfc8acc51a56d5d0ab6af06826461864460636d8bd5c546dab2a7b8
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 5000
+          env:
+            - name: REGISTRY_STORAGE_DELETE_ENABLED
+              value: "true"
+            - name: REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY
+              value: /var/lib/registry
+            # The image's built-in config logs at debug level, which is noisy with the probes.
+            - name: REGISTRY_LOG_LEVEL
+              value: info
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/registry
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: registry-data

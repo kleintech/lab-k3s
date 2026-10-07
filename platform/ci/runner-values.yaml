@@ -1,0 +1,44 @@
+# Shared values for every gha-runner-scale-set release (one per GitHub repo), templated by
+# the ApplicationSet in argocd/apps/arc-runners.yaml. Per-repo values (githubConfigUrl,
+# runnerScaleSetName) are set there in helm.valuesObject, which overrides this file.
+# Chart defaults: https://github.com/actions/actions-runner-controller/blob/master/charts/gha-runner-scale-set/values.yaml
+
+# Pre-existing Secret in arc-runners (key github_token), created by bootstrap/10-secrets.sh.
+# Token permissions: see docs/ci.md.
+githubConfigSecret: github-runner-token
+
+# Every repo's scale set carries this label, so workflows use `runs-on: lab-k3s`.
+# (The scale set *name* must differ per repo - it is also the Kubernetes object name,
+# and all scale sets share the arc-runners namespace - so the shared handle is a label.)
+scaleSetLabels:
+  - lab-k3s
+
+minRunners: 0   # scale to zero when idle
+maxRunners: 4   # per repo; each runner pod is privileged dind, see docs/ci.md
+
+# Docker-in-Docker: a privileged docker:dind sidecar per runner pod, so jobs can
+# `docker build` / `docker push` directly.
+containerMode:
+  type: dind
+
+# Runner container. In dind mode the chart keeps everything set here except env/volumeMounts,
+# and adds the dind sidecar itself (the sidecar's spec is not configurable in this mode).
+template:
+  spec:
+    containers:
+      - name: runner
+        image: ghcr.io/actions/actions-runner:latest
+        command: ["/home/runner/run.sh"]
+        resources:
+          requests:
+            cpu: 500m
+            memory: 1Gi
+          limits:
+            memory: 4Gi
+
+# Must match the controller's ServiceAccount (platform/ci/controller-values.yaml,
+# serviceAccount.name, in namespace arc-systems). Explicit because the chart's
+# auto-discovery uses a Helm `lookup`, which does not work under Argo CD.
+controllerServiceAccount:
+  namespace: arc-systems
+  name: arc-gha-rs-controller

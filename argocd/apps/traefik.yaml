@@ -1,0 +1,33 @@
+# Customisation of k3s' bundled Traefik (HelmChartConfig) + the default TLSStore.
+# Wave -1: after the wildcard certs. The Traefik and helm.cattle.io CRDs ship with k3s.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: traefik
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/kleintech/lab-k3s.git
+    targetRevision: main
+    path: platform/traefik/manifests
+    directory:
+      recurse: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m

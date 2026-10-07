@@ -1,0 +1,19 @@
+# Image storage. local-path => /var/lib/rancher/k3s/storage/<pv>_registry_registry-data on notatonix.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: registry-data
+  namespace: registry
+  labels:
+    app.kubernetes.io/name: registry
+  annotations:
+    # local-path reclaimPolicy is Delete (rm -rf of the volume dir). Never let Argo prune or
+    # delete this claim, e.g. after a file rename. Removing it is a deliberate manual step.
+    argocd.argoproj.io/sync-options: Prune=false,Delete=false
+spec:
+  storageClassName: local-path
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 30Gi

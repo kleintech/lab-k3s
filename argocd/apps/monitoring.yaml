@@ -1,0 +1,59 @@
+# kube-prometheus-stack: Prometheus, Alertmanager, Grafana (https://grafana.lab.kleincogroup.com),
+# node-exporter, kube-state-metrics, prometheus-operator + its CRDs. Wave 0.
+# ServerSideApply is required: the operator CRDs are too large for the client-side
+# last-applied-configuration annotation (262144-byte limit).
+# No resources finalizer: deleting this Application must not delete the monitoring.coreos.com
+# CRDs, which would take every app's ServiceMonitor/PodMonitor/PrometheusRule with them.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: monitoring
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: default
+  sources:
+    - repoURL: https://prometheus-community.github.io/helm-charts
+      chart: kube-prometheus-stack
+      targetRevision: 92.1.0
+      helm:
+        releaseName: kube-prometheus-stack
+        valueFiles:
+          - $values/platform/monitoring/values.yaml
+    - repoURL: https://github.com/kleintech/lab-k3s.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  # The chart renders the operator's admission webhooks without a caBundle. Its
+  # kube-webhook-certgen "patch" hook Job injects one after install. The Argo CD docs use
+  # exactly this webhook caBundle case as their ignoreDifferences example
+  # (docs/user-guide/diffing.md, "System-Level Configuration"). Ignoring the field keeps
+  # the app from showing OutOfSync because of the injected value.
+  ignoreDifferences:
+    - group: admissionregistration.k8s.io
+      kind: MutatingWebhookConfiguration
+      jqPathExpressions:
+        - '.webhooks[]?.clientConfig.caBundle'
+    - group: admissionregistration.k8s.io
+      kind: ValidatingWebhookConfiguration
+      jqPathExpressions:
+        - '.webhooks[]?.clientConfig.caBundle'
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - Replace=false   # the default. Stated explicitly so nobody flips it: replacing the CRDs would be destructive
+      # Apply the ignoreDifferences above when syncing too, so a selfHeal sync never strips the injected caBundle.
+      - RespectIgnoreDifferences=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m

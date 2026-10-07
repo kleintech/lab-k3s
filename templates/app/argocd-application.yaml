@@ -1,0 +1,30 @@
+# Argo CD Application for a project's "prod" (internal) deploy.
+# Copy to ~/dev/lab-k3s/argocd/apps/<name>.yaml, replace the placeholders, commit and push
+# lab-k3s main; the root app picks it up within about a minute.
+#
+#   myapp                      -> the service name (Application name and namespace)
+#   kleintech/myproject        -> the project's GitHub repo
+#
+# A private project repo needs a repository credential in Argo CD first (not in git):
+#   argocd repo add https://github.com/kleintech/myproject.git --username x --password <PAT with contents:read>
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: myapp
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/kleintech/myproject.git
+    targetRevision: main
+    path: k8s            # the kustomization in the project repo
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: myapp     # prod namespace = service name (lab-k3s CONVENTIONS.md)
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

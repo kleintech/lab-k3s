@@ -1,0 +1,35 @@
+# ClusterIssuers + the two wildcard Certificates (kube-system). Wave -2: after cert-manager.
+# SkipDryRunOnMissingResource: on the very first sync the cert-manager CRDs may not be
+# registered yet; retry then picks it up once cert-manager (wave -3) is healthy.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cert-issuers
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/kleintech/lab-k3s.git
+    targetRevision: main
+    path: platform/cert-issuers/manifests
+    directory:
+      recurse: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+      - SkipDryRunOnMissingResource=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m

@@ -1,0 +1,48 @@
+# Overrides for k3s' bundled Traefik. k3s' helm-controller merges valuesContent over the
+# values in its own HelmChart (/var/lib/rancher/k3s/server/manifests/traefik.yaml).
+# Written against the traefik chart k3s bundles: 40.1.x on k3s stable v1.36, 41.4.x on
+# k3s v1.37 (both Traefik v3.7). Re-check on k3s minor upgrades.
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: traefik
+  namespace: kube-system
+spec:
+  valuesContent: |-
+    ports:
+      web:
+        http:
+          redirections:
+            entryPoint:
+              to: websecure
+              scheme: https
+              permanent: true
+        # readTimeout 0 = no limit. Docker pushes to registry.lab.kleincogroup.com send
+        # each layer as one long PATCH; Traefik's default 60s readTimeout aborts them.
+        transport:
+          respondingTimeouts:
+            readTimeout: 0
+      websecure:
+        http:
+          tls:
+            enabled: true
+        transport:
+          respondingTimeouts:
+            readTimeout: 0
+    providers:
+      kubernetesIngress:
+        enabled: true
+        publishedService:
+          enabled: true
+      kubernetesCRD:
+        enabled: true
+        allowCrossNamespace: true
+    api:
+      dashboard: true
+    # LAN-only (no public DNS for *.lab), so no auth middleware.
+    # tls is inherited from the websecure entrypoint; the cert comes from the default TLSStore.
+    ingressRoute:
+      dashboard:
+        enabled: true
+        matchRule: Host(`traefik.lab.kleincogroup.com`)
+        entryPoints: ["websecure"]

@@ -1,0 +1,33 @@
+# Actions Runner Controller (ARC), runner-scale-set mode: the controller + CRDs.
+# The per-repo runner scale sets are in argocd/apps/arc-runners.yaml. See docs/ci.md.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: arc-controller
+  namespace: argocd
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: arc-systems
+  sources:
+    # OCI Helm repo: Argo CD wants the URL *without* the oci:// prefix.
+    - repoURL: ghcr.io/actions/actions-runner-controller-charts
+      chart: gha-runner-scale-set-controller
+      targetRevision: 0.15.0   # keep in step with arc-runners.yaml
+      helm:
+        # Fixed release name; the controller ServiceAccount name is pinned in the values file.
+        releaseName: arc
+        valueFiles:
+          - $values/platform/ci/controller-values.yaml
+    - repoURL: https://github.com/kleintech/lab-k3s.git
+      targetRevision: main
+      ref: values
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      # The ARC CRDs are too large for client-side apply's last-applied annotation.
+      - ServerSideApply=true

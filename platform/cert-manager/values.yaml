@@ -1,0 +1,41 @@
+# jetstack/cert-manager chart, version pinned in argocd/apps/cert-manager.yaml.
+crds:
+  enabled: true
+  keep: true   # uninstalling the chart must not delete Certificates cluster-wide
+
+# DNS-01 self-checks must query public resolvers. The UDM answers *.lab.kleincogroup.com
+# itself (split horizon), so the in-cluster resolver path can give answers that never
+# match what Let's Encrypt sees for _acme-challenge records.
+dns01RecursiveNameservers: "1.1.1.1:53,8.8.8.8:53"
+dns01RecursiveNameserversOnly: true
+
+resources:
+  requests:
+    cpu: 20m
+    memory: 64Mi
+  limits:
+    memory: 256Mi
+
+webhook:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 128Mi
+
+cainjector:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
+
+startupapicheck:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 64Mi

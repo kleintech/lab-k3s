@@ -1,0 +1,41 @@
+# Argo CD manages itself. bootstrap/20-argocd.sh greps the first `targetRevision:` in this
+# file for the chart version, so keep the chart source FIRST and its targetRevision the
+# first such line. Release name and namespace must match the bootstrap helm install
+# (`argocd` / `argocd`). No resources finalizer: deleting this Application must never
+# uninstall Argo CD.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: argocd
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: default
+  sources:
+    - repoURL: https://argoproj.github.io/argo-helm
+      chart: argo-cd
+      targetRevision: 10.10.0
+      helm:
+        releaseName: argocd
+        valueFiles:
+          - $values/platform/argocd/values.yaml
+    - repoURL: https://github.com/kleintech/lab-k3s.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m

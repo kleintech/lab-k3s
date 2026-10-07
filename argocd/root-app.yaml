@@ -1,0 +1,32 @@
+# Root app-of-apps. Applied once by bootstrap/20-argocd.sh; from then on it syncs every
+# Application under argocd/apps/. No resources finalizer on purpose: deleting the root
+# Application must not cascade into deleting the whole platform.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/kleintech/lab-k3s.git
+    targetRevision: main
+    path: argocd/apps
+    directory:
+      recurse: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m

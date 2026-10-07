@@ -1,0 +1,79 @@
+# Smoke test for the whole ingress path: UDM DNS -> ServiceLB -> Traefik (HTTP->HTTPS
+# redirect, wildcard cert from the default TLSStore) -> Service -> Pod.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: whoami
+  namespace: whoami
+  labels:
+    app.kubernetes.io/name: whoami
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: whoami
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: whoami
+    spec:
+      containers:
+        - name: whoami
+          image: traefik/whoami:v1.12.0
+          args: ["--port", "8080"]
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+          resources:
+            requests:
+              cpu: 5m
+              memory: 16Mi
+            limits:
+              memory: 32Mi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65534
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: whoami
+  namespace: whoami
+  labels:
+    app.kubernetes.io/name: whoami
+spec:
+  selector:
+    app.kubernetes.io/name: whoami
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: whoami
+  namespace: whoami
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts: [whoami.lab.kleincogroup.com]
+  rules:
+    - host: whoami.lab.kleincogroup.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: whoami
+                port:
+                  number: 80

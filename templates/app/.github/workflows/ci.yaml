@@ -1,0 +1,111 @@
+# CI on the lab k3s cluster: test, then build the image and push it to the in-cluster registry.
+#
+# Runs on the self-hosted runners from Actions Runner Controller (`runs-on: lab-k3s`).
+# Before the first run, add this repo to the runner list in lab-k3s
+# (argocd/apps/arc-runners.yaml, one `- repo: <name>` element) and push lab-k3s main;
+# until then jobs sit in "Waiting for a runner".
+#
+# Each job gets a fresh, ephemeral runner pod with a Docker-in-Docker sidecar, so plain
+# `docker build` / `docker push` work. Nothing carries over between jobs or runs (no layer
+# cache, no workspace), and `localhost` services started with `docker run` are reachable
+# from the job as usual.
+#
+# Registry: registry.lab.kleincogroup.com - no auth, LAN only, public Let's Encrypt cert
+# (no --insecure-registry needed). It is NOT reachable from GitHub-hosted runners.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Cancel a superseded run of the same branch/PR; the cluster has a small runner pool.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Replace these two. Image: registry.lab.kleincogroup.com/<project>/<name>
+  PROJECT: myproject
+  NAME: myapp
+  REGISTRY: registry.lab.kleincogroup.com
+
+jobs:
+  test:
+    runs-on: lab-k3s
+    steps:
+      - uses: actions/checkout@v7
+
+      # The runner image has git and docker but no language toolchains; install what the
+      # project needs. Example for Node; swap for setup-python / setup-go / etc.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm   # stored in GitHub's Actions cache (downloaded each run), not on the node
+
+      - run: npm ci
+      - run: npm test
+      # - run: npm run lint
+
+  build:
+    needs: test
+    runs-on: lab-k3s
+    # Images from pull requests are pushed too (tagged with the SHA) so a PR build can be
+    # deployed to a dev-<project> namespace. Add `if: github.event_name == 'push'` to stop that.
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Compute tags
+        id: meta
+        run: |
+          image="${REGISTRY}/${PROJECT}/${NAME}"
+          tags="${image}:${GITHUB_SHA}"
+          # Moving tag on main, for humans and dev deploys. Deployments managed by Argo CD
+          # should pin the immutable SHA tag instead (see k8s/kustomization.yaml).
+          if [[ "${GITHUB_REF}" == "refs/heads/main" ]]; then
+            tags="${tags},${image}:main"
+          fi
+          echo "image=${image}" >> "$GITHUB_OUTPUT"
+          echo "tags=${tags}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push
+        run: |
+          args=()
+          IFS=',' read -ra tags <<< "${{ steps.meta.outputs.tags }}"
+          for t in "${tags[@]}"; do args+=(--tag "$t"); done
+          # buildx with the default "docker" driver builds in the dind daemon; --push sends
+          # every tag to the registry.
+          docker buildx build \
+            --label "org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}" \
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+            "${args[@]}" \
+            --push \
+            .
+          echo "pushed: ${{ steps.meta.outputs.tags }}" >> "$GITHUB_STEP_SUMMARY"
+
+  # Optional: continuous deployment through Argo CD. On main, write the new SHA into
+  # k8s/kustomization.yaml and commit it; the project's Argo CD Application (see
+  # argocd-application.yaml) then rolls it out. Pushes made with GITHUB_TOKEN do not
+  # trigger another workflow run, so this does not loop. Requires that main accepts
+  # pushes from GitHub Actions (no branch protection blocking it).
+  #
+  # deploy:
+  #   needs: build
+  #   if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+  #   runs-on: lab-k3s
+  #   permissions:
+  #     contents: write
+  #   steps:
+  #     - uses: actions/checkout@v7
+  #     - name: Pin the new image tag
+  #       run: |
+  #         sed -i -E "s/^([[:space:]]*newTag:).*/\1 ${GITHUB_SHA}/" k8s/kustomization.yaml
+  #         git diff --exit-code && exit 0   # already pinned
+  #         git config user.name  "github-actions[bot]"
+  #         git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+  #         git commit -am "deploy: ${NAME} ${GITHUB_SHA::7}"
+  #         git push

@@ -1,0 +1,65 @@
+# One ARC runner scale set per GitHub repo (kleintech/<repo>), all in namespace arc-runners.
+# Workflows target them with `runs-on: lab-k3s` (a label every scale set carries).
+#
+# To give another repo CI on the cluster, add an element and push to main:
+#   - repo: my-other-repo
+# The repo name becomes part of Kubernetes object names, so it must be lowercase
+# letters, digits and '-' only, at most 38 characters ("runner-" + name <= 45).
+# The token in arc-runners/github-runner-token must be able to administer that repo
+# (fine-grained PAT: add the repo to the token's repository access; see docs/ci.md).
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: arc-runners
+  namespace: argocd
+  annotations:
+    # The AutoscalingRunnerSet CRD comes from arc-controller (wave 0). The retry below
+    # covers the first sync if this one gets there first.
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - list:
+        elements:
+          - repo: lab-k3s
+          # - repo: my-other-repo
+  template:
+    metadata:
+      name: 'arc-runners-{{ .repo }}'
+    spec:
+      project: default
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: arc-runners
+      sources:
+        - repoURL: ghcr.io/actions/actions-runner-controller-charts
+          chart: gha-runner-scale-set
+          targetRevision: 0.15.0   # keep in step with arc-controller.yaml
+          helm:
+            releaseName: 'runner-{{ .repo }}'
+            valueFiles:
+              - $values/platform/ci/runner-values.yaml
+            # valuesObject takes precedence over valueFiles.
+            valuesObject:
+              githubConfigUrl: 'https://github.com/kleintech/{{ .repo }}'
+              # Also the AutoscalingRunnerSet's object name, so unique per repo.
+              runnerScaleSetName: 'runner-{{ .repo }}'
+        - repoURL: https://github.com/kleintech/lab-k3s.git
+          targetRevision: main
+          ref: values
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true
+          # Dry-run of AutoscalingRunnerSet fails until arc-controller has installed the CRD.
+          - SkipDryRunOnMissingResource=true
+        retry:
+          limit: 10
+          backoff:
+            duration: 30s
+            factor: 2
+            maxDuration: 10m

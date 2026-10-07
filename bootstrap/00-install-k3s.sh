@@ -22,13 +22,9 @@ tls-san:
   - notatonix
 write-kubeconfig-mode: "0644"
 # traefik + servicelb stay enabled (defaults); we customise traefik via HelmChartConfig.
-disable:
-  - traefik-disabled-placeholder-never-matches
 kubelet-arg:
   - "max-pods=250"
 CFG
-# remove the placeholder line (kept the list syntax explicit above)
-sed -i '/traefik-disabled-placeholder/d; /^disable:$/d' /etc/rancher/k3s/config.yaml
 
 export INSTALL_K3S_CHANNEL="${INSTALL_K3S_CHANNEL:-stable}"
 [[ -n "$K3S_VERSION" ]] && export INSTALL_K3S_VERSION="$K3S_VERSION"

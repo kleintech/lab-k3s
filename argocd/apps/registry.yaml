@@ -1,0 +1,34 @@
+# In-cluster OCI registry: https://registry.lab.kleincogroup.com (LAN only, no auth).
+# Plain manifests in platform/registry/manifests. Wave 0.
+# No resources finalizer: deleting this Application must not delete the PVC holding every image.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: registry
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/kleintech/lab-k3s.git
+    targetRevision: main
+    path: platform/registry/manifests
+    directory:
+      recurse: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: registry
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m
