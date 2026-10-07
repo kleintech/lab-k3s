@@ -31,6 +31,7 @@ in place:
 ```
 sudo bootstrap/00-install-k3s.sh   # k3s (Traefik + ServiceLB), kubeconfig, helm
 bootstrap/10-secrets.sh            # namespaces + the secrets charts expect
+# new shells need: export KUBECONFIG=$HOME/.kube/config  (k3s' kubectl otherwise tries the root-only /etc/rancher/k3s/k3s.yaml)
 bootstrap/20-argocd.sh             # Argo CD, then the root app-of-apps (push main to GitHub first; Argo syncs from there)
 scripts/udm-dns.sh ensure-lab      # LAN DNS: *.lab.kleincogroup.com -> 192.168.4.243 on the UDM
 ```
