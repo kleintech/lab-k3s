@@ -15,8 +15,10 @@
 #                  One-time PIN identity provider so the listed emails can sign in
 #   --idp          with --gated, repeatable: only allow login methods of this type (e.g. google,
 #                  onetimepin); they must already exist under Zero Trust > Settings >
-#                  Authentication. With exactly one, the login page goes straight to it.
-#                  Default: every login method on the account.
+#                  Authentication. Types match case-insensitively. When the selection is
+#                  exactly one login method, the login page goes straight to it.
+#                  Default: every login method on the account (re-running without --idp
+#                  lifts an earlier restriction: the app is always sent in full).
 #   --session-duration  with --gated: how long a login lasts, e.g. 24h (default), 168h, 730h
 #                  (730h = 1 month, Cloudflare's maximum)
 #   --replace      allow replacing an existing tunnel route for this name that points at a
@@ -34,9 +36,9 @@ set -euo pipefail
 # shellcheck source-path=SCRIPTDIR source=lib/cloudflare.sh
 . "$(dirname "$0")/lib/cloudflare.sh"
 
-usage() { sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+usage() { sed -n '2,/^[^#]/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//' >&2; exit 2; }
 
-MODE="" NAME="" ADD_OTP=0 REPLACE=0 SESSION="24h"
+MODE="" NAME="" ADD_OTP=0 REPLACE=0 SESSION="24h" SESSION_SET=0
 EMAILS=() IDP_TYPES=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -46,10 +48,10 @@ while [[ $# -gt 0 ]]; do
     --allow-email) [[ $# -ge 2 ]] || usage; EMAILS+=("${2,,}"); shift ;;
     --allow-email=*) e="${1#*=}"; EMAILS+=("${e,,}") ;;
     --add-otp) ADD_OTP=1 ;;
-    --idp) [[ $# -ge 2 ]] || usage; IDP_TYPES+=("${2,,}"); shift ;;
-    --idp=*) e="${1#*=}"; IDP_TYPES+=("${e,,}") ;;
-    --session-duration) [[ $# -ge 2 ]] || usage; SESSION="$2"; shift ;;
-    --session-duration=*) SESSION="${1#*=}" ;;
+    --idp) [[ $# -ge 2 && -n "$2" ]] || die "--idp needs a login method type (e.g. google)"; IDP_TYPES+=("${2,,}"); shift ;;
+    --idp=*) e="${1#*=}"; [[ -n "$e" ]] || die "--idp needs a login method type (e.g. google)"; IDP_TYPES+=("${e,,}") ;;
+    --session-duration) [[ $# -ge 2 ]] || usage; SESSION="$2"; SESSION_SET=1; shift ;;
+    --session-duration=*) SESSION="${1#*=}"; SESSION_SET=1 ;;
     --replace) REPLACE=1 ;;
     -h|--help) usage ;;
     -*) die "unknown option $1" ;;
@@ -65,13 +67,14 @@ reserved_label "$NAME" && die "'$NAME' is reserved in this zone"
 if [[ "$MODE" == gated ]]; then
   [[ ${#EMAILS[@]} -gt 0 ]] || die "--gated needs at least one --allow-email"
   for e in "${EMAILS[@]}"; do [[ "$e" =~ ^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$ ]] || die "bad email '$e'"; done
-  [[ "$SESSION" =~ ^[0-9]+(h|m|s)$ ]] || die "bad --session-duration '$SESSION' (use e.g. 24h, 730h)"
-  if [[ "$SESSION" == *h && "${SESSION%h}" -gt 730 ]]; then
-    die "--session-duration ${SESSION} is over Cloudflare's 1-month maximum (730h)"
-  fi
+  [[ "$SESSION" =~ ^([1-9][0-9]{0,6})(h|m|s)$ ]] || die "bad --session-duration '$SESSION' (one number and unit, e.g. 24h, 90m, 730h)"
+  n="${BASH_REMATCH[1]}" unit="${BASH_REMATCH[2]}"
+  case "$unit" in h) mult=3600 ;; m) mult=60 ;; *) mult=1 ;; esac
+  secs=$(( n * mult ))
+  (( secs <= 730 * 3600 )) || die "--session-duration ${SESSION} is over Cloudflare's 1-month maximum (730h)"
 else
   [[ ${#EMAILS[@]} -eq 0 ]] || die "--allow-email only makes sense with --gated"
-  [[ ${#IDP_TYPES[@]} -eq 0 && "$SESSION" == "24h" ]] || die "--idp/--session-duration only make sense with --gated"
+  [[ ${#IDP_TYPES[@]} -eq 0 && "$SESSION_SET" == 0 ]] || die "--idp/--session-duration only make sense with --gated"
 fi
 FQDN="${NAME}.${CF_ZONE}"
 export DRY_RUN
@@ -130,6 +133,11 @@ if [[ "$MODE" == gated ]]; then
       log "Access: adding the One-time PIN login method"
       cf_write POST "/accounts/${ACCOUNT_ID}/access/identity_providers" '{"type":"onetimepin","name":"One-time PIN","config":{}}' \
         || die "adding One-time PIN failed; the name was NOT routed"
+      if [[ "$DRY_RUN" == 1 ]]; then
+        idps='[{"type":"onetimepin","id":"<new-idp-id>"}]'
+      else
+        idps="$(cf GET "/accounts/${ACCOUNT_ID}/access/identity_providers")" || die "re-reading identity providers failed"
+      fi
     else
       warn "no identity providers are configured on this account. Unless the account's default login"
       warn "method works for you, allowed users will have no way to sign in. Re-run with --add-otp to add"
@@ -140,10 +148,11 @@ if [[ "$MODE" == gated ]]; then
   # Restrict the app to the requested login method types (they must exist already).
   IDP_IDS="[]"
   if [[ ${#IDP_TYPES[@]} -gt 0 ]]; then
-    IDP_IDS="$(jq -c '[.[] | select(.type as $t | $ARGS.positional | index($t)) | .id]' --args "${IDP_TYPES[@]}" <<<"$idps")"
+    # Types are matched case-insensitively (Cloudflare has e.g. "azureAD").
+    IDP_IDS="$(jq -c '[.[] | select((.type | ascii_downcase) as $t | $ARGS.positional | index($t)) | .id]' --args "${IDP_TYPES[@]}" <<<"$idps")"
     for t in "${IDP_TYPES[@]}"; do
-      jq -e --arg t "$t" 'any(.[]; .type == $t)' <<<"$idps" >/dev/null \
-        || die "no '$t' login method on the account (add it under Zero Trust > Settings > Authentication); nothing was changed"
+      jq -e --arg t "$t" 'any(.[]; (.type | ascii_downcase) == $t)' <<<"$idps" >/dev/null \
+        || die "no '$t' login method on the account (add it under Zero Trust > Settings > Authentication); the name was NOT routed"
     done
     log "Access: login limited to ${IDP_TYPES[*]} ($(jq length <<<"$IDP_IDS") method(s))"
   fi
@@ -167,8 +176,7 @@ if [[ "$MODE" == gated ]]; then
     --argjson idps "$IDP_IDS" \
     '{type:"self_hosted", name:$n, domain:$d, session_duration:$s, app_launcher_visible:false,
       policies:[{id:$p, precedence:1}]}
-     + (if ($idps | length) > 0
-        then {allowed_idps:$idps, auto_redirect_to_identity:(($idps | length) == 1)} else {} end)')"
+     + {allowed_idps:$idps, auto_redirect_to_identity:(($idps | length) == 1)}')"
   if [[ "$(jq length <<<"$OUR_APPS")" == 0 ]]; then
     log "Access: creating self-hosted app for $FQDN"
     cf_write POST "/accounts/${ACCOUNT_ID}/access/apps" "$abody" \
