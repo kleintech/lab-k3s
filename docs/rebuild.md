@@ -180,6 +180,17 @@ gcurl -X POST -H 'Content-Type: application/json' --data-binary @/tmp/dash.json 
 
 (This assumes the admin user is `admin`. If you set `GRAFANA_ADMIN_USER`, use that.)
 
+fishmaps map history (PVC `fishmaps/fishmaps-data`, about 1 GB). NOAA only re-serves a few
+days, so older history cannot be rebuilt. The pod can stay up; tar from inside it:
+
+```
+kubectl -n fishmaps exec deploy/fishmaps -- tar -C /data -czf - . > fishmaps-data-$(date +%F).tgz
+```
+
+Restore into a new PVC the same way, reversed:
+`kubectl -n fishmaps exec -i deploy/fishmaps -- tar -C /data -xzf - < fishmaps-data-<date>.tgz`,
+then `kubectl -n fishmaps rollout restart deploy/fishmaps` so the manifest is rescanned.
+
 Registry images, only if rebuilding them is painful (stop the registry first so the copy is
 consistent):
 

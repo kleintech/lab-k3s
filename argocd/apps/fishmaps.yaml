@@ -1,0 +1,27 @@
+# fishmaps (kleintech/fishing-maps): the Fishing Maps page and build API.
+# Public at https://fishmaps.kleincogroup.com (scripts/expose.sh fishmaps --public),
+# LAN at https://fishmaps.lab.kleincogroup.com. The repo is private: Argo CD reads it with a
+# read-only GitHub deploy key held in Secret argocd/repo-fishing-maps (not in git).
+# Data lives on PVC fishmaps/fishmaps-data (Prune=false,Delete=false), not rebuildable past
+# NOAA's buffer; see docs/rebuild.md.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: fishmaps
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: git@github.com:kleintech/fishing-maps.git
+    targetRevision: main
+    path: k8s            # the kustomization in the project repo
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: fishmaps     # prod namespace = service name (lab-k3s CONVENTIONS.md)
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
