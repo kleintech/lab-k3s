@@ -25,7 +25,7 @@ to you before you need it (see "Backups" at the end).
 
 - Ubuntu with a user `jklein`, hostname `notatonix`.
 - The UDM gives this box a fixed lease of **192.168.4.243** on Parent (VLAN 3), keyed to
-  MAC `5c:b2:6d:51:b8:ff`. That is the **Wi-Fi** NIC (`wlp4s0`). Switching to the wired
+  the **Wi-Fi** NIC's MAC (`wlp4s0`; see the client in the UniFi app). Switching to the wired
   NIC (`enp5s0`) or to new hardware means a new MAC. Edit the fixed IP in the UniFi UI
   (Client → Settings → Fixed IP Address) or everything below points at the wrong address.
   `bootstrap/00-install-k3s.sh` assumes `NODE_IP=192.168.4.243`.

@@ -8,7 +8,36 @@ certs, no browser warnings). Selected services can be published as
 directly on the LAN and through the tunnel from outside.
 
 Read **[CONVENTIONS.md](CONVENTIONS.md)** before adding anything. It covers the domain/TLS
-model, the Argo CD layout, namespaces and secret names. **No secrets in this repo, ever.**
+model, the Argo CD layout, namespaces and secret names.
+
+## This repo is public
+
+It is one person's homelab, published as a worked example, and it is also the live source of
+truth for that cluster. Consequences:
+
+- **No secrets, ever.** Every credential comes from files under `~/.config/` on the host
+  (listed under "Setting it up from scratch") and is turned into Kubernetes Secrets by
+  `bootstrap/10-secrets.sh`. Only secret *names* appear here. Hostnames and the private LAN
+  address are not secrets; nothing here is reachable from the Internet unless
+  `scripts/expose.sh` publishes it on purpose.
+- **Argo CD reads this repo anonymously over HTTPS**, so no deploy key or token is needed for
+  the lab itself. Private *project* repos still need their own Argo CD credential.
+- **This repo never gets a CI runner.** The runner list in `argocd/apps/arc-runners.yaml` is
+  for private repos only, because a runner pod here is privileged Docker-in-Docker on a
+  LAN-attached machine and a fork PR could run arbitrary code in it. GitHub's own guidance
+  says the same. Changes to this repo are validated locally (`helm template`, kubeconform)
+  and reviewed before pushing to `main`.
+- **Pushes to `main` deploy.** Pull requests from outside are welcome as suggestions but are
+  not merged by automation; someone with cluster access reviews and pushes.
+
+**Adapting it for your own lab:** the values to change are the domain (`lab.kleincogroup.com`
+and `kleincogroup.com`, in `CONVENTIONS.md`, `platform/cert-issuers/`, `platform/traefik/`,
+the Ingresses, the scripts and templates), the node IP (`192.168.4.243`, in
+`bootstrap/00-install-k3s.sh`, `scripts/`, `platform/registry/manifests/lan-only.yaml` and
+`platform/traefik/manifests/lan-only.yaml`), the ACME e-mail in
+`platform/cert-issuers/manifests/cluster-issuers.yaml`, the repo URL in `argocd/`, and the
+router-specific parts (`scripts/udm-dns*.sh`, `docs/dns.md` assume a UniFi Dream Machine).
+The Cloudflare pieces assume a zone on Cloudflare and an existing named tunnel.
 
 ## What is running
 
