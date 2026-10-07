@@ -43,7 +43,7 @@ sed -i "s#https://127.0.0.1:6443#https://${NODE_IP}:6443#" "$TARGET_HOME/.kube/c
 
 # helm for the user (k3s bundles kubectl at /usr/local/bin/kubectl)
 if ! command -v helm >/dev/null; then
-  curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+  curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | DESIRED_VERSION="${HELM_VERSION:-v3.22.0}" bash
 fi
 
 echo "waiting for node Ready..."
@@ -51,5 +51,6 @@ for _ in $(seq 1 60); do
   if kubectl get node -o jsonpath='{.items[0].status.conditions[?(@.type=="Ready")].status}' 2>/dev/null | grep -q True; then break; fi
   sleep 2
 done
+kubectl get node -o jsonpath='{.items[0].status.conditions[?(@.type=="Ready")].status}' | grep -q True || { echo "node not Ready after 120s" >&2; journalctl -u k3s --no-pager -n 30 >&2; exit 1; }
 kubectl get node -o wide
 echo "k3s installed. Next: bootstrap/10-secrets.sh then bootstrap/20-argocd.sh (as $TARGET_USER, no sudo)."

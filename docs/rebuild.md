@@ -50,8 +50,11 @@ chmod 600 ~/.config/lab-k3s/secrets.env ~/.config/lab-k3s/udm.env ~/.config/clou
 cd ~/dev/lab-k3s
 sudo bootstrap/00-install-k3s.sh     # k3s + kubeconfig for jklein + helm
 bootstrap/10-secrets.sh              # namespaces + secrets from secrets.env (no sudo)
-bootstrap/20-argocd.sh               # Argo CD via helm, then the root app-of-apps (no sudo)
+bootstrap/20-argocd.sh               # Argo CD via helm, then the root app-of-apps (no sudo; main must already be pushed)
 ```
+
+If the root app stalls (waves are health-gated), the usual cause is certificate issuance:
+`kubectl -n kube-system describe certificate` and `kubectl -n cert-manager logs deploy/cert-manager`.
 
 Argo CD then syncs everything under `argocd/apps/` from `main`, in sync-wave order:
 cert-manager, then issuers/certs, then the Traefik config, then everything else. Watch it:

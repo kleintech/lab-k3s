@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Install Argo CD with helm (one-time; afterwards Argo CD manages itself from argocd/apps/argocd.yaml),
-# then apply the root app-of-apps. Idempotent. No sudo.
+# then apply the root app-of-apps. First install only (afterwards Argo CD upgrades itself from
+# argocd/apps/argocd.yaml). Push main to GitHub BEFORE running this: the root app syncs from there. No sudo.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 ARGOCD_CHART_VERSION="$(grep -E '^\s+targetRevision:' argocd/apps/argocd.yaml | head -1 | awk '{print $2}')"
