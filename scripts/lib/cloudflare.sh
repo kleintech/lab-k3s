@@ -124,11 +124,18 @@ cf_access_apps_for() {
 # name and protects exactly this one hostname.
 app_name() { echo "lab-k3s ${1%%.*}"; }
 # shellcheck disable=SC2034 # OUR_APPS/OTHER_APPS are read by the sourcing scripts
-cf_split_apps() { # apps-json fqdn -> sets OUR_APPS / OTHER_APPS
+# Path-scoped "bypass" apps expose.sh --bypass-path creates for one host.
+bypass_app_name() { echo "lab-k3s bypass ${1%%.*} ${2}"; }
+BYPASS_POLICY_NAME="lab-k3s bypass everyone"
+cf_split_apps() { # apps-json fqdn -> sets OUR_APPS / OUR_BYPASS / OTHER_APPS
   OUR_APPS="$(jq -c --arg n "$(app_name "$2")" --arg h "$2" \
     '[.[] | select(.name == $n and ((.domain // "") | ascii_downcase) == $h
                    and ((.self_hosted_domains // [$h]) | length) <= 1)]' <<<"$1")"
-  OTHER_APPS="$(jq -c --argjson o "$OUR_APPS" '[.[] | select(.id as $i | ($o | map(.id) | index($i)) | not)]' <<<"$1")"
+  OUR_BYPASS="$(jq -c --arg p "$(bypass_app_name "$2" "")" --arg h "$2" \
+    '[.[] | select((.name // "") | startswith($p))
+              | select(((.domain // "") | ascii_downcase) | startswith($h + "/"))]' <<<"$1")"
+  OTHER_APPS="$(jq -c --argjson o "$OUR_APPS" --argjson b "$OUR_BYPASS" \
+    '[.[] | select(.id as $i | (($o + $b) | map(.id) | index($i)) | not)]' <<<"$1")"
 }
 
 # Serialise read-modify-write of the tunnel config between concurrent runs on this host.

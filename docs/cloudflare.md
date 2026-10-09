@@ -9,6 +9,7 @@ notatonix. Nothing on the router is opened.
 scripts/expose.sh   <name> --public
 scripts/expose.sh   <name> --gated --allow-email you@example.com [--allow-email ...] [--add-otp]
                     [--idp google] [--session-duration 730h]   # login method(s), session length (max 1 month)
+                    [--bypass-path /static/icons]             # path prefix anyone may fetch (e.g. app icons)
 scripts/unexpose.sh <name>                 # remove all of it
 scripts/unexpose.sh --access-only <name>   # drop the Access gate; the name stays published
 # -n on any of them: dry run. Reads still happen; writes are printed instead of sent.
@@ -181,3 +182,13 @@ Check with `dig @1.1.1.1`.
   SNI/`originServerName` stays the same.
 - Creating the Access app/policy, and `--add-otp`. The request bodies follow Cloudflare's
   API reference. They were checked with `-n`, never sent.
+
+## Bypass paths (`--bypass-path`)
+
+Some clients fetch files without the Access login cookie. iOS "Add to Home Screen" fetches the
+`apple-touch-icon` that way, so behind Access it gets the login page and shows a generic letter
+tile instead of the app icon. `--bypass-path /static/icons` creates a second, path-scoped Access
+app (`lab-k3s bypass <name> <path>`) with a shared Bypass policy (`lab-k3s bypass everyone`), so
+that prefix is served without login while the rest of the host stays gated. Cloudflare applies the
+most specific matching app. Only bypass files that are safe to be public. Re-running without a
+path deletes its bypass app; `unexpose.sh` removes them too (the shared policy is left in place).

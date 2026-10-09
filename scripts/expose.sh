@@ -4,7 +4,7 @@
 #
 #   scripts/expose.sh [-n] <name> --public
 #   scripts/expose.sh [-n] <name> --gated --allow-email a@x.com [--allow-email b@y.com ...] [--add-otp]
-#                     [--idp <type> ...] [--session-duration <dur>]
+#                     [--idp <type> ...] [--session-duration <dur>] [--bypass-path </path> ...]
 #
 #   -n             dry run: look everything up, print the API calls that would be made
 #   --public       anyone on the Internet can reach it (refuses if an Access app already gates it)
@@ -21,6 +21,11 @@
 #                  lifts an earlier restriction: the app is always sent in full).
 #   --session-duration  with --gated: how long a login lasts, e.g. 24h (default), 168h, 730h
 #                  (730h = 1 month, Cloudflare's maximum)
+#   --bypass-path  with --gated, repeatable: let anyone fetch this path prefix without logging
+#                  in (a path-scoped Access app with a Bypass policy), e.g. /static/icons so iOS
+#                  "Add to Home Screen" can fetch the app icon (it doesn't send the login
+#                  cookie). Only for files that are safe to be public. Re-running replaces the
+#                  list: bypass apps for paths no longer given are deleted.
 #   --replace      allow replacing an existing tunnel route for this name that points at a
 #                  different origin (e.g. a non-cluster service on another port)
 #
@@ -39,7 +44,7 @@ set -euo pipefail
 usage() { sed -n '2,/^[^#]/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//' >&2; exit 2; }
 
 MODE="" NAME="" ADD_OTP=0 REPLACE=0 SESSION="24h" SESSION_SET=0
-EMAILS=() IDP_TYPES=()
+EMAILS=() IDP_TYPES=() BYPASS_PATHS=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -n|--dry-run) DRY_RUN=1 ;;
@@ -51,6 +56,8 @@ while [[ $# -gt 0 ]]; do
     --idp) [[ $# -ge 2 && -n "$2" ]] || die "--idp needs a login method type (e.g. google)"; IDP_TYPES+=("${2,,}"); shift ;;
     --idp=*) e="${1#*=}"; [[ -n "$e" ]] || die "--idp needs a login method type (e.g. google)"; IDP_TYPES+=("${e,,}") ;;
     --session-duration) [[ $# -ge 2 ]] || usage; SESSION="$2"; SESSION_SET=1; shift ;;
+    --bypass-path) [[ $# -ge 2 ]] || usage; BYPASS_PATHS+=("$2"); shift ;;
+    --bypass-path=*) BYPASS_PATHS+=("${1#*=}") ;;
     --session-duration=*) SESSION="${1#*=}"; SESSION_SET=1 ;;
     --replace) REPLACE=1 ;;
     -h|--help) usage ;;
@@ -72,9 +79,15 @@ if [[ "$MODE" == gated ]]; then
   case "$unit" in h) mult=3600 ;; m) mult=60 ;; *) mult=1 ;; esac
   secs=$(( n * mult ))
   (( secs <= 730 * 3600 )) || die "--session-duration ${SESSION} is over Cloudflare's 1-month maximum (730h)"
+  for bp in "${BYPASS_PATHS[@]}"; do
+    # A plain path prefix: no wildcards, no '..', no query; at least one segment.
+    [[ "$bp" =~ ^(/[A-Za-z0-9._~-]+)+/?$ && "$bp" != *..* ]] \
+      || die "bad --bypass-path '$bp' (a path prefix like /static/icons)"
+  done
 else
   [[ ${#EMAILS[@]} -eq 0 ]] || die "--allow-email only makes sense with --gated"
-  [[ ${#IDP_TYPES[@]} -eq 0 && "$SESSION_SET" == 0 ]] || die "--idp/--session-duration only make sense with --gated"
+  [[ ${#IDP_TYPES[@]} -eq 0 && "$SESSION_SET" == 0 && ${#BYPASS_PATHS[@]} -eq 0 ]] \
+    || die "--idp/--session-duration/--bypass-path only make sense with --gated"
 fi
 FQDN="${NAME}.${CF_ZONE}"
 export DRY_RUN
@@ -186,6 +199,41 @@ if [[ "$MODE" == gated ]]; then
     cf_write PUT "/accounts/${ACCOUNT_ID}/access/apps/$(jq -r '.[0].id' <<<"$OUR_APPS")" "$abody" \
       || die "updating the Access app failed"
   fi
+fi
+
+# ---- 1b. bypass paths (gated only): after the main app exists, so a failure here never leaves
+# the host ungated. Converges: bypass apps for paths not listed now are deleted.
+if [[ "$MODE" == gated ]]; then
+  want="$(jq -cn --arg h "$FQDN" '[$ARGS.positional[] | sub("/$"; "") | $h + .] | unique' --args "${BYPASS_PATHS[@]}")"
+  have="${OUR_BYPASS:-[]}"
+  if [[ "$(jq length <<<"$want")" -gt 0 ]]; then
+    bpol="$(cf_policy_by_name "$BYPASS_POLICY_NAME")" || die "listing Access policies failed"
+    if [[ "$(jq length <<<"$bpol")" == 0 ]]; then
+      log "Access: creating policy '$BYPASS_POLICY_NAME' (decision bypass, everyone)"
+      bbody="$(jq -cn --arg n "$BYPASS_POLICY_NAME" '{name:$n, decision:"bypass", include:[{everyone:{}}], exclude:[], require:[]}')"
+      if [[ "$DRY_RUN" == 1 ]]; then cf_write POST "/accounts/${ACCOUNT_ID}/access/policies" "$bbody"; BPID="<bypass-policy-id>"
+      else BPID="$(cf POST "/accounts/${ACCOUNT_ID}/access/policies" "$bbody" | jq -r '.id')" || die "creating the bypass policy failed"
+      fi
+    else
+      BPID="$(jq -r '.[0].id' <<<"$bpol")"
+    fi
+    for dom in $(jq -r '.[]' <<<"$want"); do
+      path="${dom#"$FQDN"}"
+      if jq -e --arg d "$dom" 'any(.[]; ((.domain // "") | ascii_downcase) == ($d | ascii_downcase))' <<<"$have" >/dev/null; then
+        log "Access: bypass for ${dom} already present"
+        continue
+      fi
+      log "Access: creating bypass app for ${dom} (no login needed for that path)"
+      cf_write POST "/accounts/${ACCOUNT_ID}/access/apps" "$(jq -cn --arg n "$(bypass_app_name "$FQDN" "$path")" \
+        --arg d "$dom" --arg p "$BPID" \
+        '{type:"self_hosted", name:$n, domain:$d, session_duration:"24h", app_launcher_visible:false,
+          policies:[{id:$p, precedence:1}]}')" || die "creating the bypass app for $dom failed"
+    done
+  fi
+  for id in $(jq -r --argjson w "$want" '.[] | select(((.domain // "") | ascii_downcase) as $d | ($w | map(ascii_downcase) | index($d)) | not) | .id' <<<"$have"); do
+    log "Access: deleting bypass app $id (path no longer listed)"
+    cf_write DELETE "/accounts/${ACCOUNT_ID}/access/apps/${id}" || die "deleting bypass app $id failed"
+  done
 fi
 
 # ---- 2. tunnel ingress ----------------------------------------------------------------------
