@@ -81,7 +81,8 @@ if [[ "$MODE" == gated ]]; then
   (( secs <= 730 * 3600 )) || die "--session-duration ${SESSION} is over Cloudflare's 1-month maximum (730h)"
   for bp in "${BYPASS_PATHS[@]}"; do
     # A plain path prefix: no wildcards, no '..', no query; at least one segment.
-    [[ "$bp" =~ ^(/[A-Za-z0-9._~-]+)+/?$ && "$bp" != *..* ]] \
+    # Each segment starts with a letter or digit, so '.', '..' and dot-only segments are out.
+    [[ "$bp" =~ ^(/[A-Za-z0-9][A-Za-z0-9._~-]*)+/?$ && "$bp" != *..* ]] \
       || die "bad --bypass-path '$bp' (a path prefix like /static/icons)"
   done
 else
@@ -204,7 +205,8 @@ fi
 # ---- 1b. bypass paths (gated only): after the main app exists, so a failure here never leaves
 # the host ungated. Converges: bypass apps for paths not listed now are deleted.
 if [[ "$MODE" == gated ]]; then
-  want="$(jq -cn --arg h "$FQDN" '[$ARGS.positional[] | sub("/$"; "") | $h + .] | unique' --args "${BYPASS_PATHS[@]}")"
+  # Paths are compared lower-cased everywhere (dedupe and "already present").
+  want="$(jq -cn --arg h "$FQDN" '[$ARGS.positional[] | sub("/$"; "") | ascii_downcase | $h + .] | unique' --args "${BYPASS_PATHS[@]}")"
   have="${OUR_BYPASS:-[]}"
   if [[ "$(jq length <<<"$want")" -gt 0 ]]; then
     bpol="$(cf_policy_by_name "$BYPASS_POLICY_NAME")" || die "listing Access policies failed"
@@ -216,7 +218,10 @@ if [[ "$MODE" == gated ]]; then
       fi
     else
       BPID="$(jq -r '.[0].id' <<<"$bpol")"
+      [[ "$(jq -r '.[0].decision' <<<"$bpol")" == bypass ]] \
+        || die "policy '$BYPASS_POLICY_NAME' exists but isn't a bypass policy; fix it in the dashboard"
     fi
+    [[ -n "$BPID" && "$BPID" != null ]] || die "the bypass policy has no id"
     for dom in $(jq -r '.[]' <<<"$want"); do
       path="${dom#"$FQDN"}"
       if jq -e --arg d "$dom" 'any(.[]; ((.domain // "") | ascii_downcase) == ($d | ascii_downcase))' <<<"$have" >/dev/null; then

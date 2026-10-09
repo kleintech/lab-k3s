@@ -190,5 +190,5 @@ Some clients fetch files without the Access login cookie. iOS "Add to Home Scree
 tile instead of the app icon. `--bypass-path /static/icons` creates a second, path-scoped Access
 app (`lab-k3s bypass <name> <path>`) with a shared Bypass policy (`lab-k3s bypass everyone`), so
 that prefix is served without login while the rest of the host stays gated. Cloudflare applies the
-most specific matching app. Only bypass files that are safe to be public. Re-running without a
+most specific matching app. Only bypass files that are safe to be public, and treat the whole parent folder as public too: if Cloudflare matches the raw path, `/static/icons/../app.js` reaches a sibling file at the origin. Re-running without a
 path deletes its bypass app; `unexpose.sh` removes them too (the shared policy is left in place).
