@@ -45,7 +45,7 @@ remove_access() {
   local apps pol id
   apps="$(cf_access_apps_for "$FQDN")" || die "listing Access apps failed"
   cf_split_apps "$apps" "$FQDN"
-  for id in $(jq -r '.[].id' <<<"$OUR_APPS"); do
+  for id in $(jq -rn --argjson a "$OUR_APPS" --argjson b "$OUR_BYPASS" '($a + $b)[].id'); do
     log "Access: deleting app $id ($FQDN)"
     cf_write DELETE "/accounts/${ACCOUNT_ID}/access/apps/${id}" || die "deleting Access app $id failed"
   done
@@ -56,7 +56,7 @@ remove_access() {
     log "Access: deleting policy $id"
     cf_write DELETE "/accounts/${ACCOUNT_ID}/access/policies/${id}" || die "deleting Access policy $id failed"
   done
-  if [[ "$(jq length <<<"$OUR_APPS")" == 0 && "$(jq length <<<"$pol")" == 0 ]]; then log "Access: nothing to remove"; fi
+  if [[ "$(jq length <<<"$OUR_APPS")" == 0 && "$(jq length <<<"$OUR_BYPASS")" == 0 && "$(jq length <<<"$pol")" == 0 ]]; then log "Access: nothing to remove"; fi
 }
 
 if [[ "$ACCESS_ONLY" == 1 ]]; then
