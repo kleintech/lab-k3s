@@ -287,4 +287,6 @@ default TLSStore, so no secretName is needed:
     rules: [{host: ${FQDN}, http: ...same paths/backend as the lab host...}]
 Then test: curl -sI https://${FQDN}   (through Cloudflare and the tunnel, on the LAN too)
 MSG
-[[ "$MODE" == gated ]] && warn "the Access gate does not cover the internal <name>.lab.${CF_ZONE} name; LAN clients using it go straight to Traefik."
+if [[ "$MODE" == gated ]]; then
+  warn "the Access gate does not cover the internal <name>.lab.${CF_ZONE} name; LAN clients using it go straight to Traefik."
+fi

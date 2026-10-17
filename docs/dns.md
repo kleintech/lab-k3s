@@ -49,8 +49,8 @@ one left from then.)
 ```
 scripts/udm-dns.sh list
 scripts/udm-dns.sh ensure-lab                     # the two lab records above
-scripts/udm-dns.sh set foo.kleincogroup.com 192.168.4.243
-scripts/udm-dns.sh rm  foo.kleincogroup.com [192.168.4.243]   # optional: only records with that value
+scripts/udm-dns.sh set foo.lab.kleincogroup.com 192.168.4.243   # not for exposed <name>.kleincogroup.com names
+scripts/udm-dns.sh rm  foo.lab.kleincogroup.com [192.168.4.243]   # optional: only records with that value
 scripts/udm-dns.sh -n ...                         # dry run: print DNS writes, don't send them
                                                   # (with user/password it still logs in and out)
 ```

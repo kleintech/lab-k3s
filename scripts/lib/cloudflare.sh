@@ -3,7 +3,7 @@
 #
 # Env (all optional):
 #   CLOUDFLARE_API_TOKEN   else read from ~/.config/cloudflare/api-token (or $CF_TOKEN_FILE)
-#   CF_ZONE=kleincogroup.com   CF_TUNNEL=homelab   LAB_NODE_IP=192.168.4.243
+#   CF_ZONE=kleincogroup.com   CF_TUNNEL=homelab
 #   EXPOSE_ORIGIN=https://localhost:443   (where cloudflared sends traffic: Traefik on this node)
 #
 # IDs are looked up on every run, never hardcoded. The token is passed to curl through a
@@ -12,11 +12,8 @@
 CF_API="https://api.cloudflare.com/client/v4"
 CF_ZONE="${CF_ZONE:-kleincogroup.com}"
 CF_TUNNEL="${CF_TUNNEL:-homelab}"
-LAB_NODE_IP="${LAB_NODE_IP:-192.168.4.243}"
 EXPOSE_ORIGIN="${EXPOSE_ORIGIN:-https://localhost:443}"
 DRY_RUN="${DRY_RUN:-0}"
-# shellcheck disable=SC2034 # used by the sourcing scripts
-SCRIPTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 die()  { echo "${0##*/}: $*" >&2; exit 1; }
 log()  { echo "${0##*/}: $*" >&2; }
