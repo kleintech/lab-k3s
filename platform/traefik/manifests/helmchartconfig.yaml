@@ -21,6 +21,8 @@ spec:
               # those at MaxInt64-1023), so nothing could ever answer plain HTTP. Ingress
               # routers get priority = rule length (~60), so they still all redirect; a
               # router with priority > 10000 (the short LAN names, docs/dns.md) wins instead.
+              # Such a router must set entryPoints: [web]; without it, it also attaches to
+              # web and serves plain HTTP for its host.
               priority: 10000
         # readTimeout 0 = no limit. Docker pushes to registry.lab.kleincogroup.com send
         # each layer as one long PATCH; Traefik's default 60s readTimeout aborts them.

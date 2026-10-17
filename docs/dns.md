@@ -74,7 +74,17 @@ HTTP** and only to redirect to the real HTTPS name:
    `https://pool.lab.kleincogroup.com/...`. The `web` entrypoint's blanket HTTP→HTTPS
    redirect runs at priority 10000 (see `platform/traefik/manifests/helmchartconfig.yaml`),
    so without the higher priority the request is sent to `https://pool/` and fails the cert
-   check. kleintech/jandy-home-webui's `k8s/short-name.yaml` is the worked example.
+   check. Give it `entryPoints: [web]`, or it also attaches to websecure. kleintech/jandy-home-webui's
+   `k8s/short-name.yaml` is the worked example.
+
+**Order matters: route first, DNS record last.** Until the route above is live, `http://pool/`
+gets the blanket redirect, which is a **permanent** 301 to `https://pool/`. Browsers cache
+that indefinitely and never ask `http://pool/` again, so a device that tried early stays
+broken after the route ships. Before adding the UDM record, check the route answers:
+
+```
+curl -sI -H 'Host: pool' http://192.168.4.243/   # -> 302, Location: https://pool.lab.kleincogroup.com/
+```
 
 What the user has to type depends on the browser. Most treat a bare word as a search:
 

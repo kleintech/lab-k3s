@@ -234,9 +234,16 @@ verify() { # name expected-ip|"" (empty = must not resolve to old ip given as $3
 # Labels: letters/digits/_/-, not starting or ending with '-'. 127 = the UniFi API's max length.
 # A bare single label (no dot, e.g. "pool") is a short LAN name (docs/dns.md); the web UI's
 # validator accepts it too.
+# Bare names that would shadow something on the LAN, or are a typo for a full name.
+bad_short_name() {
+  case "${1,,}" in
+    localhost|wpad|local|lan|lab|home|kleincogroup|com|net|org|io|dev|app) return 0 ;;
+  esac
+  return 1
+}
 valid_name() {
   { [[ "$1" =~ ^(\*\.)?([A-Za-z0-9_]([A-Za-z0-9_-]*[A-Za-z0-9_])?\.)+[A-Za-z]{2,63}$ ]] ||
-    [[ "$1" =~ ^[A-Za-z]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$ ]]; } && (( ${#1} <= 127 ))
+    { [[ "$1" =~ ^[A-Za-z]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$ ]] && ! bad_short_name "$1"; }; } && (( ${#1} <= 127 ))
 }
 # Dotted quad, each octet 0-255 without leading zeros.
 valid_ip()   { local o='(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])'; [[ "$1" =~ ^$o\.$o\.$o\.$o$ ]]; }

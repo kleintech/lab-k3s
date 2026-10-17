@@ -272,7 +272,9 @@ fi
 # Cloudflare's ECH config) still comes from upstream, so Chrome sends ECH to Traefik and fails
 # with ERR_ECH_FALLBACK_CERTIFICATE_INVALID. Only a read check here, no credentials needed.
 lan_direct=""
-if command -v dig >/dev/null; then
+if ! command -v dig >/dev/null; then
+  warn "dig not installed; skipped the check that the UDM doesn't answer $FQDN"
+else
   lan_direct="$(dig +short +time=2 +tries=1 A "$FQDN" "@${UDM_HOST:-192.168.4.1}" 2>/dev/null | grep -Fx "$LAB_NODE_IP" || true)"
 fi
 
