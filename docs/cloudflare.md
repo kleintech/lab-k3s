@@ -55,11 +55,7 @@ Then, in this order:
 3. **DNS.** Creates a proxied CNAME `<name>.kleincogroup.com →
    <tunnel-id>.cfargotunnel.com` with the comment `lab-k3s expose.sh -> tunnel homelab`.
    `unexpose.sh` uses that comment to recognise its own records.
-4. **LAN shortcut.** Runs `scripts/udm-dns.sh set <name>.kleincogroup.com 192.168.4.243`,
-   so LAN clients skip the tunnel (split horizon). If this step fails, for example because
-   `udm.env` is missing, the Cloudflare side is already done: the script says so and exits
-   non-zero. Re-run it after fixing the credentials.
-5. **Reminder.** Prints that **the service's Ingress must also list the host
+4. **Reminder.** Prints that **the service's Ingress must also list the host
    `<name>.kleincogroup.com`**. Traefik routes by Host header, so without it the tunnel
    gets a 404. The `*.kleincogroup.com` cert is already in Traefik's default TLSStore, so no
    `secretName` is needed:
@@ -81,9 +77,7 @@ partway through never leaves a routed name ungated:
 
 1. Removes the ingress rule (PUTting the whole config back).
 2. Deletes the CNAME.
-3. Removes the UDM record, but only if it points at 192.168.4.243 (`udm-dns.sh rm <fqdn>
-   192.168.4.243`).
-4. Deletes the Access app `lab-k3s <name>` and the policy `lab-k3s allow <fqdn>`.
+3. Deletes the Access app `lab-k3s <name>` and the policy `lab-k3s allow <fqdn>`.
 
 It only removes what `expose.sh` created: an ingress rule whose `originServerName` is the
 hostname, and a CNAME carrying the comment. Anything else is reported and left alone;
@@ -105,11 +99,18 @@ Advanced Certificate Manager (paid) or a custom certificate. So public names are
 `--gated` puts Cloudflare Access (Zero Trust) in front of the hostname. A visitor coming
 through Cloudflare must sign in, and only the listed emails are allowed.
 
-**The gate only applies to traffic that comes through Cloudflare.** On the LAN, the UDM
-answers `<name>.kleincogroup.com` with 192.168.4.243, so every LAN and VLAN client,
-on any VLAN that can route to the host, goes straight to Traefik and never sees Access. The same service is also
-reachable on its `<name>.lab.kleincogroup.com` name. If the app needs authentication
-against LAN clients too, it has to do that itself.
+**The gate only applies to traffic that comes through Cloudflare.** There is no LAN DNS
+record for `<name>.kleincogroup.com` (an earlier version of `expose.sh` added one on the
+UDM; it no longer does), so LAN clients using the public name go through Cloudflare and
+see Access like anyone else. The same service is still reachable without the gate on its
+internal `<name>.lab.kleincogroup.com` name, from any LAN or VLAN client that can route to
+the host. If the app needs authentication against those clients too, it has to do that
+itself.
+
+Services exposed before that change may still have a
+`<name>.kleincogroup.com A 192.168.4.243` record on the UDM, which sends LAN clients
+straight to Traefik past the gate. Check with `scripts/udm-dns.sh list` and remove one
+with `scripts/udm-dns.sh rm <name>.kleincogroup.com 192.168.4.243`.
 
 - Creates or updates a **reusable Access policy** named `lab-k3s allow <fqdn>`:
   `POST/PUT /accounts/{account}/access/policies` with
