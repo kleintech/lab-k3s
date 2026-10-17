@@ -2,7 +2,7 @@
 # Manage custom (static) DNS A records on the UDM Pro through the UniFi Network API.
 #
 #   scripts/udm-dns.sh [-n] list
-#   scripts/udm-dns.sh [-n] set <name> <ipv4>     # idempotent upsert; <name> may be *.sub.domain
+#   scripts/udm-dns.sh [-n] set <name> <ipv4>     # idempotent upsert; <name> may be *.sub.domain or a bare short name
 #   scripts/udm-dns.sh [-n] rm  <name> [<ipv4>]   # idempotent; all records of that name, or only those -> ipv4
 #   scripts/udm-dns.sh [-n] ensure-lab            # *.lab.kleincogroup.com + lab.kleincogroup.com -> LAB_NODE_IP
 #
@@ -232,7 +232,12 @@ verify() { # name expected-ip|"" (empty = must not resolve to old ip given as $3
 
 # ---------------------------------------------------------------- commands
 # Labels: letters/digits/_/-, not starting or ending with '-'. 127 = the UniFi API's max length.
-valid_name() { [[ "$1" =~ ^(\*\.)?([A-Za-z0-9_]([A-Za-z0-9_-]*[A-Za-z0-9_])?\.)+[A-Za-z]{2,63}$ ]] && (( ${#1} <= 127 )); }
+# A bare single label (no dot, e.g. "pool") is a short LAN name (docs/dns.md); the web UI's
+# validator accepts it too.
+valid_name() {
+  { [[ "$1" =~ ^(\*\.)?([A-Za-z0-9_]([A-Za-z0-9_-]*[A-Za-z0-9_])?\.)+[A-Za-z]{2,63}$ ]] ||
+    [[ "$1" =~ ^[A-Za-z]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$ ]]; } && (( ${#1} <= 127 ))
+}
 # Dotted quad, each octet 0-255 without leading zeros.
 valid_ip()   { local o='(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])'; [[ "$1" =~ ^$o\.$o\.$o\.$o$ ]]; }
 

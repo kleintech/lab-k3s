@@ -17,6 +17,11 @@ spec:
               to: websecure
               scheme: https
               permanent: true
+              # Default is MaxInt64-1, above anything a user router may set (Traefik caps
+              # those at MaxInt64-1023), so nothing could ever answer plain HTTP. Ingress
+              # routers get priority = rule length (~60), so they still all redirect; a
+              # router with priority > 10000 (the short LAN names, docs/dns.md) wins instead.
+              priority: 10000
         # readTimeout 0 = no limit. Docker pushes to registry.lab.kleincogroup.com send
         # each layer as one long PATCH; Traefik's default 60s readTimeout aborts them.
         transport:
