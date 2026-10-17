@@ -49,9 +49,10 @@ LAN clients would skip the tunnel. That breaks Chrome:
 - The UDM answers the **A** query itself, but forwards the **HTTPS** (type 65) query upstream.
   Cloudflare's answer carries an `ech=` config (Encrypted ClientHello, on by default for the
   zone, with outer name `cloudflare-ech.com`).
-- Chrome sends an ECH ClientHello to 192.168.4.243. Traefik doesn't speak ECH, so it answers
-  with the `*.kleincogroup.com` cert. Chrome checks that against `cloudflare-ech.com` and
-  fails with `ERR_ECH_FALLBACK_CERTIFICATE_INVALID`.
+- Chrome sends an ECH ClientHello to 192.168.4.243 with outer SNI `cloudflare-ech.com`.
+  Traefik doesn't speak ECH and has no cert for that name, so it answers with its default
+  (`*.lab.kleincogroup.com`). Chrome checks that against `cloudflare-ech.com` and fails with
+  `ERR_ECH_FALLBACK_CERTIFICATE_INVALID`.
 
 So exposed names now go through Cloudflare from the LAN too (Access login included), and
 `expose.sh` warns if it finds a UDM record for the name. Remove one with
@@ -67,8 +68,13 @@ trusted certificate can cover a bare name, so the short name only ever answers *
 HTTP** and only to redirect to the real HTTPS name:
 
 1. **UDM record** `pool A 192.168.4.243` (`scripts/udm-dns.sh set pool 192.168.4.243`, or
-   the UniFi UI). The DHCP leases carry no search domain, so clients look up the bare name
-   as-is, and the UDM's dnsmasq answers it.
+   the UniFi UI). The DHCP leases carry no search domain, so a client that sends bare names
+   to unicast DNS asks the UDM for `pool` as-is, and dnsmasq answers it. **Not every client
+   does:** systemd-resolved (Ubuntu, including notatonix) refuses single-label names by
+   default (`ResolveUnicastSingleLabel=no`), and macOS, iOS and Windows are reported to need
+   a search domain too (unverified). Test a device first with the name the UDM already
+   answers: `http://unifi/`. If it fails, set a domain name on the network's DHCP settings
+   (e.g. `home.arpa`) and add `pool.home.arpa` as well; the browser still sends `Host: pool`.
 2. **Traefik route** in the app's own manifests: an `IngressRoute` on entrypoint `web`, rule
    ``Host(`pool`)``, **priority above 10000**, with a `redirectRegex` Middleware to
    `https://pool.lab.kleincogroup.com/...`. The `web` entrypoint's blanket HTTP→HTTPS
@@ -88,13 +94,19 @@ curl -sI -H 'Host: pool' http://192.168.4.243/   # -> 302, Location: https://poo
 
 What the user has to type depends on the browser. Most treat a bare word as a search:
 
-- Chrome / Edge / Firefox: `pool/` (or `http://pool`) goes straight there. Plain `pool`
-  searches; Chrome then offers "Did you mean http://pool/?".
-- Safari (iOS and macOS): `pool/` or `http://pool`.
+- Chrome / Edge / Firefox: `pool/` (or `http://pool`) usually goes straight there. Plain
+  `pool` searches; desktop Chrome then offers "Did you mean http://pool/?". With Chrome's
+  strict "Always use secure connections" on, `http://pool` gets an interstitial first;
+  Firefox's HTTPS-First tries `https://pool/` and falls back after the cert error.
+- Safari (iOS and macOS): `http://pool` (unverified whether `pool/` alone works).
 
 Bookmarks, a home-screen icon, or a QR code on the Wi-Fi card avoid typing altogether.
-Check from a LAN client: `curl -sI http://pool/` should return a redirect to
-`https://pool.lab.kleincogroup.com/`.
+Check (works from notatonix too, bypassing its resolver):
+
+```
+dig +short pool @192.168.4.1                                  # -> 192.168.4.243
+curl -sI --resolve pool:80:192.168.4.243 http://pool/         # -> 302 to https://pool.lab.kleincogroup.com/
+```
 
 ## Managing the records: `scripts/udm-dns.sh`
 
