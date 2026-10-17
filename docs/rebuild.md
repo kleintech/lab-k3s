@@ -122,7 +122,7 @@ connector has to be reinstalled:
    put it on the command line instead.
 4. The ingress rules come back with the connector (they're stored at Cloudflare). For each
    name that **`expose.sh` created** (CNAME comment `lab-k3s expose.sh ...`), re-assert the
-   full set, including the UDM record: `scripts/expose.sh <name> --public` or
+   full set: `scripts/expose.sh <name> --public` or
    `--gated --allow-email ...`. Don't do this for routes made by hand (other services on
    this host that the tunnel also serves). `expose.sh` refuses those unless you pass
    `--replace`, which would point them at Traefik.

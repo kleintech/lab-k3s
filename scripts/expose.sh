@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Expose a cluster service to the Internet as https://<name>.kleincogroup.com through the
-# existing Cloudflare tunnel, and make LAN clients reach it directly (split-horizon).
+# existing Cloudflare tunnel. LAN clients reach it the same way, through Cloudflare.
 #
 #   scripts/expose.sh [-n] <name> --public
 #   scripts/expose.sh [-n] <name> --gated --allow-email a@x.com [--allow-email b@y.com ...] [--add-otp]
@@ -9,7 +9,7 @@
 #   -n             dry run: look everything up, print the API calls that would be made
 #   --public       anyone on the Internet can reach it (refuses if an Access app already gates it)
 #   --gated        put a Cloudflare Access app in front, allowing only the listed emails
-#                  (the gate applies to traffic through Cloudflare; LAN clients go direct)
+#                  (applies on the LAN too: the public name always goes through Cloudflare)
 #   --allow-email  repeatable; required with --gated (re-running replaces the list)
 #   --add-otp      with --gated: if the account has no login method at all, add the
 #                  One-time PIN identity provider so the listed emails can sign in
@@ -35,7 +35,8 @@
 #   2. tunnel ingress rule <name>.kleincogroup.com -> $EXPOSE_ORIGIN (Traefik), inserted
 #      before the http_status:404 catch-all; the whole config object is PUT back
 #   3. proxied CNAME <name>.kleincogroup.com -> <tunnel-id>.cfargotunnel.com
-#   4. UDM record <name>.kleincogroup.com -> $LAB_NODE_IP via scripts/udm-dns.sh
+# No LAN DNS record is made for the public name (there used to be a UDM split-horizon one), so
+# the gate covers LAN clients too; only the internal <name>.lab name bypasses it.
 # Undo with scripts/unexpose.sh <name>. See docs/cloudflare.md.
 set -euo pipefail
 # shellcheck source-path=SCRIPTDIR source=lib/cloudflare.sh
@@ -266,11 +267,6 @@ else
   log "DNS: proxied CNAME already present"
 fi
 
-# ---- 4. split-horizon record on the UDM ------------------------------------------------------
-udm_rc=0
-udm_args=(); [[ "$DRY_RUN" == 1 ]] && udm_args+=(-n)
-"$SCRIPTS_DIR/udm-dns.sh" "${udm_args[@]}" set "$FQDN" "$LAB_NODE_IP" || udm_rc=$?
-
 # ---- verify + reminder ------------------------------------------------------------------------
 if [[ "$DRY_RUN" != 1 ]] && command -v dig >/dev/null; then
   pub=""
@@ -289,12 +285,6 @@ without it the tunnel gets a 404. The *.${CF_ZONE} wildcard cert is already in T
 default TLSStore, so no secretName is needed:
     tls:   [{hosts: [<name>.lab.${CF_ZONE}, ${FQDN}]}]
     rules: [{host: ${FQDN}, http: ...same paths/backend as the lab host...}]
-Then test: curl -sI https://${FQDN}   (LAN: direct to ${LAB_NODE_IP}; elsewhere: via the tunnel)
+Then test: curl -sI https://${FQDN}   (through Cloudflare and the tunnel, on the LAN too)
 MSG
-[[ "$MODE" == gated ]] && warn "the Access gate applies to traffic through Cloudflare only; LAN clients reach $FQDN directly."
-if [[ "$udm_rc" != 0 ]]; then
-  warn "Cloudflare side is done, but the UDM record failed (exit $udm_rc): LAN clients will go out"
-  warn "through the tunnel until it exists. Fix ~/.config/lab-k3s/udm.env and re-run this command"
-  warn "(it is idempotent), or add the record by hand (docs/dns.md)."
-  exit "$udm_rc"
-fi
+[[ "$MODE" == gated ]] && warn "the Access gate does not cover the internal <name>.lab.${CF_ZONE} name; LAN clients using it go straight to Traefik."
