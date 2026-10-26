@@ -9,6 +9,10 @@ metadata:
   namespace: kube-system
 spec:
   valuesContent: |-
+    # k3s already gives traefik system-cluster-critical priority. The PDB blocks voluntary eviction.
+    podDisruptionBudget:
+      enabled: true
+      minAvailable: 1
     ports:
       web:
         http:

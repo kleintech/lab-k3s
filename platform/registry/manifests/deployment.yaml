@@ -22,6 +22,7 @@ spec:
       labels:
         app.kubernetes.io/name: registry
     spec:
+      priorityClassName: lab-platform   # platform/scheduling
       securityContext:
         # local-path creates volume dirs with mode 0777, so a non-root UID can write. No fsGroup:
         # it isn't needed, and it would recursively chown the whole store on every mount.

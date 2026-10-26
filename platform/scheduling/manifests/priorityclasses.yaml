@@ -1,0 +1,35 @@
+# Who gets squeezed first on the single node. Two mechanisms use these:
+#  - kubelet node-pressure eviction (memory/disk): pods using more than they request go first,
+#    then lowest priority. CI runners request 1Gi and burst to GBs, so they are always first.
+#  - scheduler preemption: a pending higher-priority pod may evict lower ones to fit.
+#    lab-ci has preemptionPolicy Never, so a runner can never evict anything to get scheduled.
+# Priority is read at pod creation: existing pods pick up a class only when recreated.
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: lab-critical
+value: 1000000
+description: "Control plane of the lab: Argo CD, cert-manager. Only k3s system components rank higher."
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: lab-platform
+value: 500000
+description: "Shared services: monitoring, registry, Actions Runner Controller and listeners."
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: lab-workload
+value: 100000
+globalDefault: true
+description: "Default for everything else: prod and dev application pods."
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: lab-ci
+value: 0
+preemptionPolicy: Never
+description: "GitHub Actions runner pods. Evicted first under pressure, never preempt others."

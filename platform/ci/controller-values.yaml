@@ -6,6 +6,8 @@
 # platform/ci/runner-values.yaml references this exact name (controllerServiceAccount.name):
 # without it the runner chart falls back to a Helm `lookup` of the controller Deployment,
 # which returns nothing under Argo CD (it renders with `helm template`) and fails the render.
+priorityClassName: lab-platform   # platform/scheduling
+
 serviceAccount:
   create: true
   name: arc-gha-rs-controller

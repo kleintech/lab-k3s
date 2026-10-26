@@ -2,6 +2,8 @@
 # installs the same version with this file, then Argo CD takes itself over).
 global:
   domain: argocd.lab.kleincogroup.com
+  # platform/scheduling: Argo CD is what repairs everything else, so it ranks just below k3s itself.
+  priorityClassName: lab-critical
 
 configs:
   params:
@@ -43,6 +45,9 @@ applicationSet:
       memory: 256Mi
 
 server:
+  pdb:
+    enabled: true
+    minAvailable: 1   # single replica: blocks voluntary eviction (drain, eviction API); node-pressure eviction ignores PDBs
   ingress:
     enabled: true
     ingressClassName: traefik
@@ -62,6 +67,9 @@ server:
       memory: 512Mi
 
 controller:
+  pdb:
+    enabled: true
+    minAvailable: 1   # single replica: blocks voluntary eviction (drain, eviction API); node-pressure eviction ignores PDBs
   resources:
     requests:
       cpu: 100m
@@ -70,6 +78,9 @@ controller:
       memory: 2Gi
 
 repoServer:
+  pdb:
+    enabled: true
+    minAvailable: 1   # single replica: blocks voluntary eviction (drain, eviction API); node-pressure eviction ignores PDBs
   resources:
     requests:
       cpu: 50m
@@ -78,6 +89,9 @@ repoServer:
       memory: 1Gi
 
 redis:
+  pdb:
+    enabled: true
+    minAvailable: 1   # single replica: blocks voluntary eviction (drain, eviction API); node-pressure eviction ignores PDBs
   resources:
     requests:
       cpu: 10m

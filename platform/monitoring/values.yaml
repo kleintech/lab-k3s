@@ -47,6 +47,7 @@ nodeExporter:
 # Grafana  (https://grafana.lab.kleincogroup.com)
 # ---------------------------------------------------------------------------
 grafana:
+  priorityClassName: lab-platform   # platform/scheduling
   enabled: true
   admin:
     # Created by bootstrap/10-secrets.sh from ~/.config/lab-k3s/secrets.env.
@@ -95,7 +96,11 @@ grafana:
 # Prometheus
 # ---------------------------------------------------------------------------
 prometheus:
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
   prometheusSpec:
+    priorityClassName: lab-platform
     retention: 15d
     # Prometheus deletes the oldest blocks once the TSDB (WAL included) reaches this size.
     # Units are powers of 2, so this is 17GiB of the 20Gi request. local-path does not enforce
@@ -128,8 +133,12 @@ prometheus:
 # Alertmanager (no receivers yet; alerts are visible in Grafana / the AM UI via port-forward)
 # ---------------------------------------------------------------------------
 alertmanager:
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
   enabled: true
   alertmanagerSpec:
+    priorityClassName: lab-platform
     resources:
       requests:
         cpu: 10m
@@ -147,9 +156,16 @@ alertmanager:
               storage: 2Gi
 
 prometheusOperator:
+  priorityClassName: lab-platform
   resources:
     requests:
       cpu: 50m
       memory: 128Mi
     limits:
       memory: 512Mi
+
+# subcharts (platform/scheduling)
+kube-state-metrics:
+  priorityClassName: lab-platform
+prometheus-node-exporter:
+  priorityClassName: lab-platform

@@ -1,4 +1,7 @@
 # jetstack/cert-manager chart, version pinned in argocd/apps/cert-manager.yaml.
+global:
+  priorityClassName: lab-critical   # platform/scheduling
+
 crds:
   enabled: true
   keep: true   # uninstalling the chart must not delete Certificates cluster-wide

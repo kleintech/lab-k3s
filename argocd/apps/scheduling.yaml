@@ -1,0 +1,25 @@
+# PriorityClasses every other app references. Wave -4: before anything that sets priorityClassName.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: scheduling
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-4"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/kleintech/lab-k3s.git
+    targetRevision: main
+    path: platform/scheduling/manifests
+    directory:
+      recurse: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true

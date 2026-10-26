@@ -154,4 +154,5 @@ and PVC data (registry images, Prometheus history, Grafana UI changes), see rebu
 - [docs/rebuild.md](docs/rebuild.md): disaster recovery and backups
 - [docs/ci.md](docs/ci.md): in-cluster GitHub Actions runners (`runs-on: lab-k3s`)
 - [docs/observability.md](docs/observability.md): Prometheus / Grafana
+- [docs/scheduling.md](docs/scheduling.md): PriorityClasses, PDBs, why CI gets evicted first
 - [templates/README.md](templates/README.md): onboarding a new project

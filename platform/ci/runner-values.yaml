@@ -25,6 +25,8 @@ containerMode:
 # and adds the dind sidecar itself (the sidecar's spec is not configurable in this mode).
 template:
   spec:
+    # platform/scheduling: evicted first under node pressure, never preempts anything.
+    priorityClassName: lab-ci
     containers:
       - name: runner
         image: ghcr.io/actions/actions-runner:2.338.0
@@ -44,3 +46,8 @@ template:
 controllerServiceAccount:
   namespace: arc-systems
   name: arc-gha-rs-controller
+
+# The listener is what accepts jobs from GitHub; it is tiny and should outlive the runners.
+listenerTemplate:
+  spec:
+    priorityClassName: lab-platform

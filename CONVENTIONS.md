@@ -84,6 +84,14 @@ In-cluster registry at `registry.lab.kleincogroup.com` (TLS via wildcard cert, s
 insecure-registry config anywhere). Dev loop: `docker build -t registry.lab.kleincogroup.com/<proj>/<img>:<tag> . && docker push ...`.
 CI pushes there too.
 
+## Scheduling
+
+Four PriorityClasses (`platform/scheduling/`, see `docs/scheduling.md`): `lab-critical`
+(Argo CD, cert-manager), `lab-platform` (monitoring, registry, ARC), `lab-workload` (the
+default for apps), `lab-ci` (runner pods; evicted first, never preempts). Single-replica
+platform services carry `minAvailable: 1` PDBs. Apps set nothing, but must declare honest
+memory requests.
+
 ## Storage
 
 k3s `local-path` StorageClass (default), data under `/var/lib/rancher/k3s/storage`.
