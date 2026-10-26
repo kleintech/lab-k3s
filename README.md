@@ -4,8 +4,8 @@ Infrastructure as code for the single-node k3s lab on `notatonix` (192.168.4.243
 reconciles branch `main` of this repo into the cluster, so **a push to `main` is a deploy**.
 Internal services live at `https://<name>.lab.kleincogroup.com` (LAN only, real Let's Encrypt
 certs, no browser warnings). Selected services can be published as
-`https://<name>.kleincogroup.com` through the existing Cloudflare Tunnel; the same link works
-directly on the LAN and through the tunnel from outside.
+`https://<name>.kleincogroup.com` through the existing Cloudflare Tunnel; that link goes
+through the tunnel from everywhere, LAN included (see docs/dns.md on ECH).
 
 Read **[CONVENTIONS.md](CONVENTIONS.md)** before adding anything. It covers the domain/TLS
 model, the Argo CD layout, namespaces and secret names.

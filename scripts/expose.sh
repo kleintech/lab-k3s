@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Expose a cluster service to the Internet as https://<name>.kleincogroup.com through the
-# existing Cloudflare tunnel, and make LAN clients reach it directly (split-horizon).
+# existing Cloudflare tunnel. LAN clients use the same path (no split-horizon record: it
+# breaks Chrome through ECH, see docs/dns.md "Exposed names and ECH").
 #
 #   scripts/expose.sh [-n] <name> --public
 #   scripts/expose.sh [-n] <name> --gated --allow-email a@x.com [--allow-email b@y.com ...] [--add-otp]
@@ -9,7 +10,7 @@
 #   -n             dry run: look everything up, print the API calls that would be made
 #   --public       anyone on the Internet can reach it (refuses if an Access app already gates it)
 #   --gated        put a Cloudflare Access app in front, allowing only the listed emails
-#                  (the gate applies to traffic through Cloudflare; LAN clients go direct)
+#                  (the gate covers LAN clients too, unless the UDM answers the name itself)
 #   --allow-email  repeatable; required with --gated (re-running replaces the list)
 #   --add-otp      with --gated: if the account has no login method at all, add the
 #                  One-time PIN identity provider so the listed emails can sign in
@@ -35,7 +36,7 @@
 #   2. tunnel ingress rule <name>.kleincogroup.com -> $EXPOSE_ORIGIN (Traefik), inserted
 #      before the http_status:404 catch-all; the whole config object is PUT back
 #   3. proxied CNAME <name>.kleincogroup.com -> <tunnel-id>.cfargotunnel.com
-#   4. UDM record <name>.kleincogroup.com -> $LAB_NODE_IP via scripts/udm-dns.sh
+#   4. check that the UDM does NOT answer the name itself (warns if it does)
 # Undo with scripts/unexpose.sh <name>. See docs/cloudflare.md.
 set -euo pipefail
 # shellcheck source-path=SCRIPTDIR source=lib/cloudflare.sh
@@ -266,10 +267,16 @@ else
   log "DNS: proxied CNAME already present"
 fi
 
-# ---- 4. split-horizon record on the UDM ------------------------------------------------------
-udm_rc=0
-udm_args=(); [[ "$DRY_RUN" == 1 ]] && udm_args+=(-n)
-"$SCRIPTS_DIR/udm-dns.sh" "${udm_args[@]}" set "$FQDN" "$LAB_NODE_IP" || udm_rc=$?
+# ---- 4. no split-horizon record on the UDM ---------------------------------------------------
+# A UDM A record for the name sends LAN clients to Traefik, but the HTTPS record (with
+# Cloudflare's ECH config) still comes from upstream, so Chrome sends ECH to Traefik and fails
+# with ERR_ECH_FALLBACK_CERTIFICATE_INVALID. Only a read check here, no credentials needed.
+lan_direct=""
+if ! command -v dig >/dev/null; then
+  warn "dig not installed; skipped the check that the UDM doesn't answer $FQDN"
+else
+  lan_direct="$(dig +short +time=2 +tries=1 A "$FQDN" "@${UDM_HOST:-192.168.4.1}" 2>/dev/null | grep -Fx "$LAB_NODE_IP" || true)"
+fi
 
 # ---- verify + reminder ------------------------------------------------------------------------
 if [[ "$DRY_RUN" != 1 ]] && command -v dig >/dev/null; then
@@ -289,12 +296,10 @@ without it the tunnel gets a 404. The *.${CF_ZONE} wildcard cert is already in T
 default TLSStore, so no secretName is needed:
     tls:   [{hosts: [<name>.lab.${CF_ZONE}, ${FQDN}]}]
     rules: [{host: ${FQDN}, http: ...same paths/backend as the lab host...}]
-Then test: curl -sI https://${FQDN}   (LAN: direct to ${LAB_NODE_IP}; elsewhere: via the tunnel)
+Then test: curl -sI https://${FQDN}   (goes through the tunnel from everywhere, LAN included)
 MSG
-[[ "$MODE" == gated ]] && warn "the Access gate applies to traffic through Cloudflare only; LAN clients reach $FQDN directly."
-if [[ "$udm_rc" != 0 ]]; then
-  warn "Cloudflare side is done, but the UDM record failed (exit $udm_rc): LAN clients will go out"
-  warn "through the tunnel until it exists. Fix ~/.config/lab-k3s/udm.env and re-run this command"
-  warn "(it is idempotent), or add the record by hand (docs/dns.md)."
-  exit "$udm_rc"
+if [[ -n "$lan_direct" ]]; then
+  warn "the UDM answers $FQDN with $LAB_NODE_IP. Chrome on the LAN will fail with"
+  warn "ERR_ECH_FALLBACK_CERTIFICATE_INVALID (and LAN clients skip the Access gate). Remove it:"
+  warn "  scripts/udm-dns.sh rm $FQDN $LAB_NODE_IP   (or in the UniFi UI; docs/dns.md)"
 fi

@@ -5,7 +5,8 @@
 | name | answered by | resolves to | who uses it |
 |------|-------------|-------------|-------------|
 | `*.lab.kleincogroup.com`, `lab.kleincogroup.com` | UDM Pro (LAN only) | `192.168.4.243` (the lab host) | every internal service |
-| `<name>.kleincogroup.com` (exposed services only) | UDM Pro on the LAN; Cloudflare everywhere else | LAN: `192.168.4.243`. Internet: Cloudflare edge, then the `homelab` tunnel | services published with `scripts/expose.sh` |
+| `<name>.kleincogroup.com` (exposed services only) | Cloudflare, LAN included | Cloudflare edge, then the `homelab` tunnel | services published with `scripts/expose.sh` |
+| `<name>` (short LAN names, opt-in) | UDM Pro (LAN only) | `192.168.4.243`; Traefik redirects `http://<name>/` to `https://<name>.lab.kleincogroup.com/` | people typing a bare name on the Wi-Fi |
 
 Traefik on notatonix terminates TLS for both with wildcard Let's Encrypt certs. cert-manager
 gets them by DNS-01 through Cloudflare, so the lab never has to be reachable from the
@@ -38,17 +39,81 @@ cover the whole lab:
 
 The bare name needs its own record because a `*.` wildcard matches only names *below* it.
 
-Each exposed service also gets `<name>.kleincogroup.com A 192.168.4.243` on the UDM
-(`expose.sh` adds it). On the LAN, that name then goes straight to Traefik instead of out to
-Cloudflare and back through the tunnel. Off the LAN, public DNS sends it to the tunnel. One
-URL works in both places.
+Exposed services (`<name>.kleincogroup.com`) get **no** UDM record. See the next section.
+
+### Exposed names and ECH: no split horizon
+
+Until 2026-10-16, `expose.sh` also put `<name>.kleincogroup.com A 192.168.4.243` on the UDM so
+LAN clients would skip the tunnel. That breaks Chrome:
+
+- The UDM answers the **A** query itself, but forwards the **HTTPS** (type 65) query upstream.
+  Cloudflare's answer carries an `ech=` config (Encrypted ClientHello, on by default for the
+  zone, with outer name `cloudflare-ech.com`).
+- Chrome sends an ECH ClientHello to 192.168.4.243 with outer SNI `cloudflare-ech.com`.
+  Traefik doesn't speak ECH and has no cert for that name, so it answers with its default
+  (`*.lab.kleincogroup.com`). Chrome checks that against `cloudflare-ech.com` and fails with
+  `ERR_ECH_FALLBACK_CERTIFICATE_INVALID`.
+
+So exposed names now go through Cloudflare from the LAN too (Access login included), and
+`expose.sh` warns if it finds a UDM record for the name. Remove one with
+`scripts/udm-dns.sh rm <name>.kleincogroup.com 192.168.4.243` or in the UniFi UI. The LAN
+name `<name>.lab.kleincogroup.com` still goes direct: public DNS has no HTTPS record for it.
+Turning ECH off for the zone (SSL/TLS → Edge Certificates; the lab's API token can't) would
+also fix it, at the cost of ECH for every public visitor.
+
+## Short LAN names (`http://pool/`)
+
+For a guest on the Wi-Fi, typing `pool` beats `pool.lab.kleincogroup.com`. No publicly
+trusted certificate can cover a bare name, so the short name only ever answers **plain
+HTTP** and only to redirect to the real HTTPS name:
+
+1. **UDM record** `pool A 192.168.4.243` (`scripts/udm-dns.sh set pool 192.168.4.243`, or
+   the UniFi UI). The DHCP leases carry no search domain, so a client that sends bare names
+   to unicast DNS asks the UDM for `pool` as-is, and dnsmasq answers it. **Not every client
+   does:** systemd-resolved (Ubuntu, including notatonix) refuses single-label names by
+   default (`ResolveUnicastSingleLabel=no`), and macOS, iOS and Windows are reported to need
+   a search domain too (unverified). Test a device first with the name the UDM already
+   answers: `http://unifi/`. If it fails, set a domain name on the network's DHCP settings
+   (e.g. `home.arpa`) and add `pool.home.arpa` as well; the browser still sends `Host: pool`.
+2. **Traefik route** in the app's own manifests: an `IngressRoute` on entrypoint `web`, rule
+   ``Host(`pool`)``, **priority above 10000**, with a `redirectRegex` Middleware to
+   `https://pool.lab.kleincogroup.com/...`. The `web` entrypoint's blanket HTTP→HTTPS
+   redirect runs at priority 10000 (see `platform/traefik/manifests/helmchartconfig.yaml`),
+   so without the higher priority the request is sent to `https://pool/` and fails the cert
+   check. Give it `entryPoints: [web]`, or it also attaches to websecure. kleintech/jandy-home-webui's
+   `k8s/short-name.yaml` is the worked example.
+
+**Order matters: route first, DNS record last.** Until the route above is live, `http://pool/`
+gets the blanket redirect, which is a **permanent** 301 to `https://pool/`. Browsers cache
+that indefinitely and never ask `http://pool/` again, so a device that tried early stays
+broken after the route ships. Before adding the UDM record, check the route answers:
+
+```
+curl -sI -H 'Host: pool' http://192.168.4.243/   # -> 302, Location: https://pool.lab.kleincogroup.com/
+```
+
+What the user has to type depends on the browser. Most treat a bare word as a search:
+
+- Chrome / Edge / Firefox: `pool/` (or `http://pool`) usually goes straight there. Plain
+  `pool` searches; desktop Chrome then offers "Did you mean http://pool/?". With Chrome's
+  strict "Always use secure connections" on, `http://pool` gets an interstitial first;
+  Firefox's HTTPS-First tries `https://pool/` and falls back after the cert error.
+- Safari (iOS and macOS): `http://pool` (unverified whether `pool/` alone works).
+
+Bookmarks, a home-screen icon, or a QR code on the Wi-Fi card avoid typing altogether.
+Check (works from notatonix too, bypassing its resolver):
+
+```
+dig +short pool @192.168.4.1                                  # -> 192.168.4.243
+curl -sI --resolve pool:80:192.168.4.243 http://pool/         # -> 302 to https://pool.lab.kleincogroup.com/
+```
 
 ## Managing the records: `scripts/udm-dns.sh`
 
 ```
 scripts/udm-dns.sh list
 scripts/udm-dns.sh ensure-lab                     # the two lab records above
-scripts/udm-dns.sh set foo.kleincogroup.com 192.168.4.243
+scripts/udm-dns.sh set pool 192.168.4.243         # a short LAN name (see "Short LAN names")
 scripts/udm-dns.sh rm  foo.kleincogroup.com [192.168.4.243]   # optional: only records with that value
 scripts/udm-dns.sh -n ...                         # dry run: print DNS writes, don't send them
                                                   # (with user/password it still logs in and out)
@@ -115,6 +180,8 @@ Not verified (no credentials were available to the author):
 - Whether the v2 `static-dns` endpoint accepts an **API key** instead of a session.
 - How UniFi renders a wildcard static record into dnsmasq. The `dig` check after each write
   is the test.
+- Whether either API accepts a **single-label** name like `pool` (the web UI's validator
+  does). If one returns 400, add it in the UniFi UI.
 
 ## Fallback: add the records in the UniFi UI
 
