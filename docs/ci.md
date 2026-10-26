@@ -95,7 +95,7 @@ Design notes:
 
 ## Adding a repo
 
-1. Add `- repo: <name>` to the list in `argocd/apps/arc-runners.yaml` (lowercase, `[a-z0-9-]`,
+1. Add `- owner: <github-owner>` + `repo: <name>` to the list in `argocd/apps/arc-runners.yaml` (lowercase, `[a-z0-9-]`,
    ≤ 38 chars — it becomes part of Kubernetes names).
 2. Add the repo to the fine-grained PAT's repository access.
 3. Commit and push `main`. Check: `kubectl -n arc-runners get autoscalingrunnersets` and the

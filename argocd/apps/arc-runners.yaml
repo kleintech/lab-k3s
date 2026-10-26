@@ -22,9 +22,13 @@ spec:
   generators:
     - list:
         # PRIVATE repos only (docs/ci.md): runner pods are privileged dind on the LAN node.
-        # kleintech/lab-k3s is public and has no workflows, so it is deliberately not listed.
-        elements: []
-          # - repo: my-private-repo
+        # kleintech/lab-k3s is public, so it is deliberately not listed. Each element needs the
+        # GitHub owner (user or org) and repo; the runner token must have Administration RW on it.
+        elements:
+          - owner: ProCurrent
+            repo: ilm-realtor
+          # - owner: kleintech
+          #   repo: my-private-repo
   template:
     metadata:
       name: 'arc-runners-{{ .repo }}'
@@ -43,7 +47,7 @@ spec:
               - $values/platform/ci/runner-values.yaml
             # valuesObject takes precedence over valueFiles.
             valuesObject:
-              githubConfigUrl: 'https://github.com/kleintech/{{ .repo }}'
+              githubConfigUrl: 'https://github.com/{{ .owner }}/{{ .repo }}'
               # Also the AutoscalingRunnerSet's object name, so unique per repo.
               runnerScaleSetName: 'runner-{{ .repo }}'
         - repoURL: https://github.com/kleintech/lab-k3s.git

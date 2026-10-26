@@ -27,7 +27,7 @@ grep -rln 'myapp\|myproject' Dockerfile k8s .github argocd-application.yaml \
 mv argocd-application.yaml ~/dev/lab-k3s/argocd/apps/<name>.yaml   # when ready for prod
 ```
 
-1. **CI**: add `- repo: <github-repo>` to `argocd/apps/arc-runners.yaml` in this repo, add the
+1. **CI**: add `- owner: <github-owner>` / `repo: <name>` to `argocd/apps/arc-runners.yaml` in this repo, add the
    repo to the runner token's repository access, push (see `docs/ci.md`). Then pushes and PRs
    run `test` and `build`; images land at
    `registry.lab.kleincogroup.com/<project>/<name>:<git-sha>` (plus `:main` on main).
