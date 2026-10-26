@@ -51,3 +51,7 @@ controllerServiceAccount:
 listenerTemplate:
   spec:
     priorityClassName: lab-platform
+    # The CRD requires containers here; an entry named "listener" is merged into the
+    # controller's default listener container, so a bare name changes nothing else.
+    containers:
+      - name: listener
