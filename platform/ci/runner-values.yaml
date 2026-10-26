@@ -14,7 +14,7 @@ scaleSetLabels:
   - lab-k3s
 
 minRunners: 0   # scale to zero when idle
-maxRunners: 2   # per repo; each runner pod is privileged dind, see docs/ci.md
+maxRunners: 3   # per repo; each runner pod is privileged dind, see docs/ci.md. 2 serialised ilm-realtor CI (~10 min).
 
 # Docker-in-Docker: a privileged docker:dind sidecar per runner pod, so jobs can
 # `docker build` / `docker push` directly.
@@ -34,7 +34,9 @@ template:
             cpu: 500m
             memory: 1Gi
           limits:
-            memory: 4Gi
+            # `next build` in ilm-realtor peaks ~3.8GB across main + workers; at 4Gi the OOM
+            # killer took the runner agent with it and the job hung "in progress" (PR #662).
+            memory: 8Gi
 
 # Must match the controller's ServiceAccount (platform/ci/controller-values.yaml,
 # serviceAccount.name, in namespace arc-systems). Explicit because the chart's
