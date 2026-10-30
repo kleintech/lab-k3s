@@ -99,6 +99,24 @@ prometheus:
   podDisruptionBudget:
     enabled: true
     minAvailable: 1
+  # cert-manager controller metrics for the LabCertificate* rules. It is declared here,
+  # not in the cert-manager chart, so it is created in the same sync as the CRD
+  # (see platform/cert-manager/values.yaml).
+  additionalServiceMonitors:
+    - name: cert-manager
+      namespaceSelector:
+        matchNames: [cert-manager]
+      selector:
+        matchLabels:
+          app.kubernetes.io/name: cert-manager
+          app.kubernetes.io/component: controller
+      endpoints:
+        - port: http-metrics
+          path: /metrics
+          interval: 60s
+          # Keep each certificate's own `namespace` label (kube-system) instead of having
+          # it renamed to exported_namespace in favour of the target's (cert-manager).
+          honorLabels: true
   prometheusSpec:
     priorityClassName: lab-platform
     retention: 15d
@@ -324,7 +342,7 @@ additionalPrometheusRulesMap:
             annotations:
               summary: 'Argo CD app {{ $labels.name }} is {{ $labels.sync_status }}'
               description: 'Not Synced for 30 minutes: a sync is failing or selfHeal is fighting something. https://argocd.lab.kleincogroup.com/applications/argocd/{{ $labels.name }}'
-          # Needs the cert-manager ServiceMonitor (platform/cert-manager/values.yaml).
+          # Needs the cert-manager ServiceMonitor (prometheus.additionalServiceMonitors above).
           # Let's Encrypt certs renew 30 days before expiry, so 14 days left means renewal is failing.
           - alert: LabCertificateExpiring
             expr: certmanager_certificate_expiration_timestamp_seconds - time() < 14 * 86400

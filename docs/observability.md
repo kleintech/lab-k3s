@@ -68,7 +68,7 @@ the `Lab*` rules:
 | LabCertificateExpiring / NotReady | warning | a cert-manager certificate has under 14 days left / is not Ready for 1h |
 
 The Argo CD and cert-manager rules depend on their ServiceMonitors (`controller.metrics` in
-`platform/argocd/values.yaml`, `prometheus.servicemonitor` in `platform/cert-manager/values.yaml`).
+`platform/argocd/values.yaml`, `prometheus.additionalServiceMonitors` in `platform/monitoring/values.yaml`, kept out of the cert-manager chart so a rebuild's wave -3 doesn't need the ServiceMonitor CRD).
 
 **SMTP credential.** Set `ALERTMANAGER_SMTP_PASSWORD` in `~/.config/lab-k3s/secrets.env` to a
 Gmail app password for kleintech@gmail.com. Creating one needs 2-Step Verification: go to
