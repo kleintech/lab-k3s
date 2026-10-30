@@ -47,9 +47,10 @@ that proves the alert pipeline works.
 
 ## Alerts by email
 
-Alertmanager emails every `warning` and `critical` alert to kleintech@gmail.com through
-Gmail SMTP (`alertmanager.config` in `platform/monitoring/values.yaml`). `info` alerts,
-`Watchdog` and `InfoInhibitor` are not sent. Alerts are grouped by alert name and namespace.
+Alertmanager emails alerts to kleintech@gmail.com through Gmail SMTP
+(`alertmanager.config` in `platform/monitoring/values.yaml`). Every alert is sent except
+`severity: info`, `Watchdog` and `InfoInhibitor`. That includes alerts with no severity
+label, so give a new rule `severity: info` if it should stay quiet. Alerts are grouped by alert name and namespace.
 A group that is still firing is re-sent every 4h if critical and every 12h if warning, and
 you get a second email when it resolves.
 
