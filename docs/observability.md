@@ -78,16 +78,31 @@ The Argo CD and cert-manager rules depend on their ServiceMonitors (`controller.
 `platform/argocd/values.yaml`, `prometheus.additionalServiceMonitors` in `platform/monitoring/values.yaml`, kept out of the cert-manager chart so a rebuild's wave -3 doesn't need the ServiceMonitor CRD).
 
 **SMTP credential.** Mail goes out through Resend (`smtp.resend.com:587`, username
-`resend`) from `alerts@kleincogroup.com`. The domain is verified in Resend by DNS records
-in the Cloudflare zone: `resend._domainkey` (DKIM) plus MX and SPF records on `send`.
-The password is a Resend API key with **Sending access**, restricted to `kleincogroup.com`.
-It can send mail as that domain and nothing else, so it doesn't open a mailbox or account.
-Put it in `~/.config/lab-k3s/secrets.env` as `ALERTMANAGER_SMTP_PASSWORD` and run
-`bootstrap/10-secrets.sh`, which creates `monitoring/alertmanager-smtp`. Alertmanager reads
-the file at send time, so a new key is picked up without a restart (allow ~1 min for the
-kubelet to refresh the mounted secret). The secret volume is `optional`, so if the secret is
-missing, Alertmanager still runs and only email sending fails. To rotate the key, create a
-new one, update `secrets.env`, re-run the script, then delete the old key in Resend.
+`resend`) from `alerts@kleincogroup.com`. One-time setup (the DNS records are made by hand
+in Cloudflare and are not in this repo; they survive a cluster rebuild):
+
+1. In Resend, **Domains → Add domain** `kleincogroup.com`. Create the records it lists in the
+   Cloudflare zone (DKIM on `resend._domainkey`, plus MX/SPF records on `send`; use exactly
+   what Resend shows). Wait for **Verified**. Until then Resend rejects the From address
+   and every alert email fails. The only sign is a notify error in the Alertmanager log.
+2. Add `_dmarc.kleincogroup.com TXT "v=DMARC1; p=none;"`. Gmail doesn't require it at alert
+   volume, but a brand-new domain with no policy tends to land in Spam. Also add a Gmail
+   filter `from:alerts@kleincogroup.com` → *Never send it to Spam*.
+3. Create an API key with **Sending access**, restricted to `kleincogroup.com`. It can't read
+   mail or manage the account. A leaked key could still send as any `@kleincogroup.com`
+   address, so treat it as a secret.
+4. Put it in `~/.config/lab-k3s/secrets.env` as `ALERTMANAGER_SMTP_PASSWORD` and run
+   `bootstrap/10-secrets.sh`, which creates `monitoring/alertmanager-smtp`.
+
+Alertmanager reads the key file at send time, so a new key is picked up without a restart
+(allow ~1 min for the kubelet to refresh the mounted secret). The secret volume is
+`optional`, so if the secret is missing, Alertmanager still runs and only email sending
+fails. To rotate the key, create a new one, update `secrets.env`, re-run the script, then
+delete the old key in Resend.
+
+Resend's free plan allows 100 emails a day and 3,000 a month. Normal alert volume is far
+below that. A cluster-wide incident across many namespaces re-sends each critical group
+every 4h, so a long multi-namespace outage could hit the daily cap.
 
 **Test email.** Fire a synthetic alert through Alertmanager:
 
