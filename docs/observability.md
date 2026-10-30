@@ -61,12 +61,18 @@ the `Lab*` rules:
 |---|---|---|
 | LabDiskUsageHigh / Critical | warning / critical | a real filesystem is over 80% (15m) / 90% (5m) used. Kubelet image GC starts at 85% and eviction at 95% |
 | LabMemoryLow / Critical | warning / critical | MemAvailable under 10% (10m) / 5% (3m) |
-| LabMemoryThrashing | critical | memory PSI "full" over 10% for 5m: every task stalled on memory |
+| LabMemoryThrashing | critical | over 60s of memory PSI "full" stall (every task waiting on memory) within 10 minutes |
 | LabSwapInHigh | warning | over 1000 pages/s (~4 MB/s) swapped in for 10m |
+| LabOOMKill | warning | the kernel OOM-killed any process in the last 15m |
 | LabNodePressure | critical | node has DiskPressure / MemoryPressure / PIDPressure |
-| LabContainerOOMKilled | warning | a container was OOMKilled and restarted |
 | LabArgoAppUnhealthy / OutOfSync | warning | an Argo CD app is not Healthy for 20m / not Synced for 30m |
 | LabCertificateExpiring / NotReady | warning | a cert-manager certificate has under 14 days left / is not Ready for 1h |
+
+Host alerts use `keep_firing_for`, so a value hovering around a threshold produces one alert,
+not a flapping series. Overlaps are inhibited (critical disk silences high disk and the
+chart's `NodeFilesystem*` alerts on the same mountpoint; critical memory / thrashing silences
+low memory and swap-in). The chart's `NodeMemoryHighUtilization` is disabled as a duplicate of
+`LabMemoryLow`.
 
 The Argo CD and cert-manager rules depend on their ServiceMonitors (`controller.metrics` in
 `platform/argocd/values.yaml`, `prometheus.additionalServiceMonitors` in `platform/monitoring/values.yaml`, kept out of the cert-manager chart so a rebuild's wave -3 doesn't need the ServiceMonitor CRD).
