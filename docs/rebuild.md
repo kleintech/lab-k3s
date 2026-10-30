@@ -8,7 +8,7 @@ supply the secrets and whatever data lived on PVCs.
 
 | item | where it lives | how it comes back |
 |------|----------------|-------------------|
-| `~/.config/lab-k3s/secrets.env` | notatonix only | your backup (Cloudflare token, Grafana admin, GitHub runner token, Gmail SMTP app password) |
+| `~/.config/lab-k3s/secrets.env` | notatonix only | your backup (Cloudflare token, Grafana admin, GitHub runner token, Resend API key for alert email) |
 | `~/.config/lab-k3s/udm.env` | notatonix only | your backup, or create a new UniFi API key / local admin |
 | `~/.config/cloudflare/api-token` | notatonix only | backup, or a new token (permissions: [cloudflare.md](cloudflare.md#api-token)) |
 | `/etc/cloudflared/token` (tunnel `homelab` run token) | notatonix, root 0600 | backup, or fetch again from Cloudflare (step 5) |

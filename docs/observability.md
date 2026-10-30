@@ -47,7 +47,7 @@ that proves the alert pipeline works.
 
 ## Alerts by email
 
-Alertmanager emails alerts to kleintech@gmail.com through Gmail SMTP
+Alertmanager emails alerts to kleintech@gmail.com from `alerts@kleincogroup.com` via Resend
 (`alertmanager.config` in `platform/monitoring/values.yaml`). Every alert is sent except
 `severity: info`, `Watchdog` and `InfoInhibitor`. That includes alerts with no severity
 label, so give a new rule `severity: info` if it should stay quiet. Alerts are grouped by alert name and namespace.
@@ -77,13 +77,17 @@ low memory and swap-in). The chart's `NodeMemoryHighUtilization` is disabled as 
 The Argo CD and cert-manager rules depend on their ServiceMonitors (`controller.metrics` in
 `platform/argocd/values.yaml`, `prometheus.additionalServiceMonitors` in `platform/monitoring/values.yaml`, kept out of the cert-manager chart so a rebuild's wave -3 doesn't need the ServiceMonitor CRD).
 
-**SMTP credential.** Set `ALERTMANAGER_SMTP_PASSWORD` in `~/.config/lab-k3s/secrets.env` to a
-Gmail app password for kleintech@gmail.com. Creating one needs 2-Step Verification: go to
-<https://myaccount.google.com/apppasswords>. Then run `bootstrap/10-secrets.sh`, which creates
-`monitoring/alertmanager-smtp`. Alertmanager reads the file at send time, so a new password is
-picked up without a restart (allow ~1 min for the kubelet to refresh the mounted secret).
-The secret volume is `optional`, so if the secret is missing, Alertmanager still runs and only
-email sending fails.
+**SMTP credential.** Mail goes out through Resend (`smtp.resend.com:587`, username
+`resend`) from `alerts@kleincogroup.com`. The domain is verified in Resend by DNS records
+in the Cloudflare zone: `resend._domainkey` (DKIM) plus MX and SPF records on `send`.
+The password is a Resend API key with **Sending access**, restricted to `kleincogroup.com`.
+It can send mail as that domain and nothing else, so it doesn't open a mailbox or account.
+Put it in `~/.config/lab-k3s/secrets.env` as `ALERTMANAGER_SMTP_PASSWORD` and run
+`bootstrap/10-secrets.sh`, which creates `monitoring/alertmanager-smtp`. Alertmanager reads
+the file at send time, so a new key is picked up without a restart (allow ~1 min for the
+kubelet to refresh the mounted secret). The secret volume is `optional`, so if the secret is
+missing, Alertmanager still runs and only email sending fails. To rotate the key, create a
+new one, update `secrets.env`, re-run the script, then delete the old key in Resend.
 
 **Test email.** Fire a synthetic alert through Alertmanager:
 

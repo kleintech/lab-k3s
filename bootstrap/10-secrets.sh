@@ -9,9 +9,7 @@ CLOUDFLARE_API_TOKEN="${CLOUDFLARE_API_TOKEN:-$(cat "$HOME/.config/cloudflare/ap
 GRAFANA_ADMIN_USER="${GRAFANA_ADMIN_USER:-admin}"
 GRAFANA_ADMIN_PASSWORD="${GRAFANA_ADMIN_PASSWORD:-}"
 GITHUB_RUNNER_TOKEN="${GITHUB_RUNNER_TOKEN:-}"
-# Gmail shows app passwords in groups of four; the spaces are not part of the password
-# (a quoted value with spaces still works; an unquoted one breaks sourcing secrets.env).
-ALERTMANAGER_SMTP_PASSWORD="${ALERTMANAGER_SMTP_PASSWORD:-}"; ALERTMANAGER_SMTP_PASSWORD="${ALERTMANAGER_SMTP_PASSWORD// /}"
+ALERTMANAGER_SMTP_PASSWORD="${ALERTMANAGER_SMTP_PASSWORD:-}"
 
 [[ -n "$CLOUDFLARE_API_TOKEN" ]] || { echo "CLOUDFLARE_API_TOKEN missing" >&2; exit 1; }
 if [[ -z "$GRAFANA_ADMIN_PASSWORD" ]]; then

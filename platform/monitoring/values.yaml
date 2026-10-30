@@ -148,7 +148,7 @@ prometheus:
               storage: 20Gi
 
 # ---------------------------------------------------------------------------
-# Alertmanager: warning + critical alerts are emailed through Gmail SMTP (docs/observability.md).
+# Alertmanager: alerts are emailed through Resend's SMTP relay (docs/observability.md).
 # ---------------------------------------------------------------------------
 alertmanager:
   podDisruptionBudget:
@@ -160,11 +160,13 @@ alertmanager:
   config:
     global:
       resolve_timeout: 5m
-      smtp_smarthost: smtp.gmail.com:587
-      smtp_from: lab-k3s alerts <kleintech@gmail.com>
-      smtp_auth_username: kleintech@gmail.com
-      # Gmail app password, from secret monitoring/alertmanager-smtp (bootstrap/10-secrets.sh),
-      # mounted by alertmanagerSpec.volumes below. Read at send time, not at config load.
+      # Resend, sending from the verified domain kleincogroup.com. The username is literally
+      # "resend"; the password is a sending-only Resend API key restricted to that domain,
+      # from secret monitoring/alertmanager-smtp (bootstrap/10-secrets.sh), mounted by
+      # alertmanagerSpec.volumes below. Read at send time, not at config load.
+      smtp_smarthost: smtp.resend.com:587
+      smtp_from: lab-k3s alerts <alerts@kleincogroup.com>
+      smtp_auth_username: resend
       smtp_auth_password_file: /etc/alertmanager/smtp/password
       smtp_require_tls: true
     inhibit_rules:

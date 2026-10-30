@@ -76,7 +76,7 @@ these exact names:
 | cert-manager | cloudflare-api-token     | api-token                | ClusterIssuer (DNS-01)   |
 | monitoring   | grafana-admin            | admin-user, admin-password | Grafana                |
 | arc-runners  | github-runner-token      | github_token             | ARC runner scale sets    |
-| monitoring   | alertmanager-smtp        | password                 | Alertmanager alert email (Gmail app password) |
+| monitoring   | alertmanager-smtp        | password                 | Alertmanager alert email (Resend sending-only API key) |
 | registry     | (none; LAN-only, TLS by Traefik)                                               |
 
 ## Images
