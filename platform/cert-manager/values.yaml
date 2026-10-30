@@ -12,6 +12,11 @@ crds:
 dns01RecursiveNameservers: "1.1.1.1:53,8.8.8.8:53"
 dns01RecursiveNameserversOnly: true
 
+# No chart ServiceMonitor here: the chart renders it without checking that the CRD exists,
+# and cert-manager (wave -3) syncs before monitoring (wave 0) installs the CRD, so a
+# rebuild would fail its dry-run and block every later wave. The ServiceMonitor lives in
+# platform/monitoring/values.yaml (prometheus.additionalServiceMonitors) instead.
+
 resources:
   requests:
     cpu: 20m
