@@ -12,6 +12,15 @@ crds:
 dns01RecursiveNameservers: "1.1.1.1:53,8.8.8.8:53"
 dns01RecursiveNameserversOnly: true
 
+# ServiceMonitor for the LabCertificate* alerts in platform/monitoring/values.yaml.
+prometheus:
+  enabled: true
+  servicemonitor:
+    enabled: true
+    # Keep each certificate's own `namespace` label (kube-system) instead of having it
+    # renamed to exported_namespace in favour of the scrape target's (cert-manager).
+    honorLabels: true
+
 resources:
   requests:
     cpu: 20m

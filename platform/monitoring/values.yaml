@@ -130,15 +130,73 @@ prometheus:
               storage: 20Gi
 
 # ---------------------------------------------------------------------------
-# Alertmanager (no receivers yet; alerts are visible in Grafana / the AM UI via port-forward)
+# Alertmanager: warning + critical alerts are emailed through Gmail SMTP (docs/observability.md).
 # ---------------------------------------------------------------------------
 alertmanager:
   podDisruptionBudget:
     enabled: true
     minAvailable: 1
   enabled: true
+  # Replaces the chart's default config (which routed everything to a "null" receiver).
+  # The inhibit rules are the chart defaults, repeated because the list is replaced whole.
+  config:
+    global:
+      resolve_timeout: 5m
+      smtp_smarthost: smtp.gmail.com:587
+      smtp_from: lab-k3s alerts <kleintech@gmail.com>
+      smtp_auth_username: kleintech@gmail.com
+      # Gmail app password, from secret monitoring/alertmanager-smtp (bootstrap/10-secrets.sh),
+      # mounted by alertmanagerSpec.volumes below. Read at send time, not at config load.
+      smtp_auth_password_file: /etc/alertmanager/smtp/password
+      smtp_require_tls: true
+    inhibit_rules:
+      - source_matchers: ['severity = critical']
+        target_matchers: ['severity =~ warning|info']
+        equal: [namespace, alertname]
+      - source_matchers: ['severity = warning']
+        target_matchers: ['severity = info']
+        equal: [namespace, alertname]
+      - source_matchers: ['alertname = InfoInhibitor']
+        target_matchers: ['severity = info']
+        equal: [namespace]
+      - target_matchers: ['alertname = InfoInhibitor']
+    route:
+      receiver: email
+      group_by: [alertname, namespace]
+      group_wait: 1m
+      group_interval: 10m
+      repeat_interval: 12h
+      routes:
+        # Watchdog always fires by design (dead-man's switch); InfoInhibitor is plumbing.
+        - receiver: 'null'
+          matchers: ['alertname =~ "Watchdog|InfoInhibitor"']
+        # info alerts are FYI only (e.g. CPUThrottlingHigh); see them in the AM UI / Grafana.
+        - receiver: 'null'
+          matchers: ['severity = info']
+        - receiver: email
+          matchers: ['severity = critical']
+          repeat_interval: 4h
+    receivers:
+      - name: 'null'
+      - name: email
+        email_configs:
+          - to: kleintech@gmail.com
+            send_resolved: true
+    templates:
+      - '/etc/alertmanager/config/*.tmpl'
   alertmanagerSpec:
     priorityClassName: lab-platform
+    # optional: true so a missing secret (fresh box before bootstrap/10-secrets.sh) costs
+    # email delivery only, not the Alertmanager pod.
+    volumes:
+      - name: smtp
+        secret:
+          secretName: alertmanager-smtp
+          optional: true
+    volumeMounts:
+      - name: smtp
+        mountPath: /etc/alertmanager/smtp
+        readOnly: true
     resources:
       requests:
         cpu: 10m
@@ -169,3 +227,116 @@ kube-state-metrics:
   priorityClassName: lab-platform
 prometheus-node-exporter:
   priorityClassName: lab-platform
+
+# ---------------------------------------------------------------------------
+# Lab alert rules, on top of the chart's defaults (which already cover crash loops, failed
+# jobs, NotReady pods/nodes, KubeletDown, filesystem space prediction, ...). These cover what
+# a single-node box needs and the defaults don't: early disk/memory warnings, thrashing, and
+# the platform's own failure states. Routing (what gets emailed) is alertmanager.config above.
+# ---------------------------------------------------------------------------
+additionalPrometheusRulesMap:
+  lab-host:
+    groups:
+      - name: lab-host
+        rules:
+          # Live kubelet config (k3s defaults): image GC starts at 85% used, hard eviction
+          # at nodefs/imagefs.available<5% (95% used). Warn before the first, critical before the second.
+          - alert: LabDiskUsageHigh
+            expr: 1 - node_filesystem_avail_bytes{fstype=~"ext4|xfs|btrfs|vfat"} / node_filesystem_size_bytes > 0.80
+            for: 15m
+            labels: {severity: warning}
+            annotations:
+              summary: 'Disk {{ $labels.mountpoint }} is {{ $value | humanizePercentage }} full'
+              description: 'Over 80% used. Kubelet starts deleting images at 85% and evicting pods at 95%. Usual suspects: Prometheus TSDB, registry PVC, docker build cache, /var/lib/rancher/k3s/agent/containerd.'
+          - alert: LabDiskUsageCritical
+            expr: 1 - node_filesystem_avail_bytes{fstype=~"ext4|xfs|btrfs|vfat"} / node_filesystem_size_bytes > 0.90
+            for: 5m
+            labels: {severity: critical}
+            annotations:
+              summary: 'Disk {{ $labels.mountpoint }} is {{ $value | humanizePercentage }} full'
+              description: 'Kubelet evicts pods at 95% used. Free space now.'
+          - alert: LabMemoryLow
+            expr: node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes < 0.10
+            for: 10m
+            labels: {severity: warning}
+            annotations:
+              summary: 'Only {{ $value | humanizePercentage }} of RAM available'
+              description: 'MemAvailable has been under 10% for 10 minutes.'
+          - alert: LabMemoryCritical
+            expr: node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes < 0.05
+            for: 3m
+            labels: {severity: critical}
+            annotations:
+              summary: 'Only {{ $value | humanizePercentage }} of RAM available'
+              description: 'MemAvailable under 5% (~1.5 GiB): kubelet evicts pods at 1 GiB, and the OOM killer or swap thrashing is close.'
+          # PSI "full": share of wall time in which every runnable task was stalled waiting on
+          # memory (reclaim, swap-in). This is what thrashing actually is; used swap alone isn't
+          # (idle pages can sit in swap for weeks without harm).
+          - alert: LabMemoryThrashing
+            expr: rate(node_pressure_memory_stalled_seconds_total[5m]) > 0.10
+            for: 5m
+            labels: {severity: critical}
+            annotations:
+              summary: 'Box is thrashing: all tasks stalled on memory {{ $value | humanizePercentage }} of the time'
+              description: 'Memory PSI full avg over 5m is above 10%. Find the hog: kubectl top pods -A --sort-by=memory'
+          # 1000 pages/s = ~4 MB/s of sustained swap-in: memory is being paged back in faster
+          # than it can stay resident. Earlier signal than PSI on a box with fast NVMe swap.
+          - alert: LabSwapInHigh
+            expr: rate(node_vmstat_pswpin[5m]) > 1000
+            for: 10m
+            labels: {severity: warning}
+            annotations:
+              summary: 'Sustained swap-in at {{ $value | humanize }} pages/s'
+              description: 'Working set no longer fits in RAM. Check kubectl top pods -A --sort-by=memory and the CI runners.'
+  lab-cluster:
+    groups:
+      - name: lab-cluster
+        rules:
+          # The chart ships KubeNodePressure as severity info, which is not emailed.
+          - alert: LabNodePressure
+            expr: kube_node_status_condition{condition=~"DiskPressure|MemoryPressure|PIDPressure",status="true"} == 1
+            for: 2m
+            labels: {severity: critical}
+            annotations:
+              summary: 'Node {{ $labels.node }} has {{ $labels.condition }}'
+              description: 'Kubelet is evicting pods or about to.'
+          - alert: LabContainerOOMKilled
+            expr: |
+              (kube_pod_container_status_last_terminated_reason{reason="OOMKilled"} == 1)
+              and on (namespace, pod, container)
+              (increase(kube_pod_container_status_restarts_total[15m]) > 0)
+            labels: {severity: warning}
+            annotations:
+              summary: '{{ $labels.namespace }}/{{ $labels.pod }} ({{ $labels.container }}) was OOMKilled'
+              description: 'The container hit its memory limit and restarted. Raise the limit or fix the leak.'
+          # Needs the Argo CD controller metrics (platform/argocd/values.yaml).
+          - alert: LabArgoAppUnhealthy
+            expr: argocd_app_info{health_status!="Healthy"} == 1
+            for: 20m
+            labels: {severity: warning}
+            annotations:
+              summary: 'Argo CD app {{ $labels.name }} is {{ $labels.health_status }}'
+              description: 'Not Healthy for 20 minutes. https://argocd.lab.kleincogroup.com/applications/argocd/{{ $labels.name }}'
+          - alert: LabArgoAppOutOfSync
+            expr: argocd_app_info{sync_status!="Synced"} == 1
+            for: 30m
+            labels: {severity: warning}
+            annotations:
+              summary: 'Argo CD app {{ $labels.name }} is {{ $labels.sync_status }}'
+              description: 'Not Synced for 30 minutes: a sync is failing or selfHeal is fighting something. https://argocd.lab.kleincogroup.com/applications/argocd/{{ $labels.name }}'
+          # Needs the cert-manager ServiceMonitor (platform/cert-manager/values.yaml).
+          # Let's Encrypt certs renew 30 days before expiry, so 14 days left means renewal is failing.
+          - alert: LabCertificateExpiring
+            expr: certmanager_certificate_expiration_timestamp_seconds - time() < 14 * 86400
+            for: 1h
+            labels: {severity: warning}
+            annotations:
+              summary: 'Certificate {{ $labels.namespace }}/{{ $labels.name }} expires in {{ $value | humanizeDuration }}'
+              description: 'cert-manager should have renewed it already. kubectl -n {{ $labels.namespace }} describe certificate {{ $labels.name }}'
+          - alert: LabCertificateNotReady
+            expr: certmanager_certificate_ready_status{condition="False"} == 1
+            for: 1h
+            labels: {severity: warning}
+            annotations:
+              summary: 'Certificate {{ $labels.namespace }}/{{ $labels.name }} is not Ready'
+              description: 'kubectl -n {{ $labels.namespace }} describe certificate {{ $labels.name }}'

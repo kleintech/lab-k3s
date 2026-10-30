@@ -67,6 +67,12 @@ server:
       memory: 512Mi
 
 controller:
+  # Exposes argocd_app_info (sync/health per Application) for the LabArgoApp* alerts in
+  # platform/monitoring/values.yaml. Prometheus selects every ServiceMonitor, no label needed.
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
   pdb:
     enabled: true
     minAvailable: 1   # single replica: blocks voluntary eviction (drain, eviction API); node-pressure eviction ignores PDBs

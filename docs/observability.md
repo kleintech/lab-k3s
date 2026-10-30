@@ -42,9 +42,56 @@ kubectl -n monitoring port-forward svc/kube-prometheus-stack-prometheus 9090
 kubectl -n monitoring port-forward svc/kube-prometheus-stack-alertmanager 9093
 ```
 
-No Alertmanager receivers are configured yet, so alerts show up only in the Alertmanager UI and in Grafana.
 `Watchdog` (and sometimes `InfoInhibitor`) is **always** firing on purpose. It is a dead-man's switch
 that proves the alert pipeline works.
+
+## Alerts by email
+
+Alertmanager emails every `warning` and `critical` alert to kleintech@gmail.com through
+Gmail SMTP (`alertmanager.config` in `platform/monitoring/values.yaml`). `info` alerts,
+`Watchdog` and `InfoInhibitor` are not sent. Alerts are grouped by alert name and namespace.
+A group that is still firing is re-sent every 4h if critical and every 12h if warning, and
+you get a second email when it resolves.
+
+On top of the chart's default rules, `additionalPrometheusRulesMap` in the same file adds
+the `Lab*` rules:
+
+| alert | severity | fires when |
+|---|---|---|
+| LabDiskUsageHigh / Critical | warning / critical | a real filesystem is over 80% (15m) / 90% (5m) used. Kubelet image GC starts at 85% and eviction at 95% |
+| LabMemoryLow / Critical | warning / critical | MemAvailable under 10% (10m) / 5% (3m) |
+| LabMemoryThrashing | critical | memory PSI "full" over 10% for 5m: every task stalled on memory |
+| LabSwapInHigh | warning | over 1000 pages/s (~4 MB/s) swapped in for 10m |
+| LabNodePressure | critical | node has DiskPressure / MemoryPressure / PIDPressure |
+| LabContainerOOMKilled | warning | a container was OOMKilled and restarted |
+| LabArgoAppUnhealthy / OutOfSync | warning | an Argo CD app is not Healthy for 20m / not Synced for 30m |
+| LabCertificateExpiring / NotReady | warning | a cert-manager certificate has under 14 days left / is not Ready for 1h |
+
+The Argo CD and cert-manager rules depend on their ServiceMonitors (`controller.metrics` in
+`platform/argocd/values.yaml`, `prometheus.servicemonitor` in `platform/cert-manager/values.yaml`).
+
+**SMTP credential.** Set `ALERTMANAGER_SMTP_PASSWORD` in `~/.config/lab-k3s/secrets.env` to a
+Gmail app password for kleintech@gmail.com. Creating one needs 2-Step Verification: go to
+<https://myaccount.google.com/apppasswords>. Then run `bootstrap/10-secrets.sh`, which creates
+`monitoring/alertmanager-smtp`. Alertmanager reads the file at send time, so a new password is
+picked up without a restart (allow ~1 min for the kubelet to refresh the mounted secret).
+The secret volume is `optional`, so if the secret is missing, Alertmanager still runs and only
+email sending fails.
+
+**Test email.** Fire a synthetic alert through Alertmanager:
+
+```sh
+kubectl -n monitoring port-forward svc/kube-prometheus-stack-alertmanager 9093 &
+curl -s -XPOST localhost:9093/api/v2/alerts -H 'Content-Type: application/json' -d \
+  '[{"labels":{"alertname":"LabTestAlert","severity":"warning"},"annotations":{"summary":"test"}}]'
+```
+
+The email arrives after `group_wait` (1 min). If it doesn't, check
+`kubectl -n monitoring logs alertmanager-kube-prometheus-stack-alertmanager-0 -c alertmanager | grep -i notify`.
+
+**Limitation.** Every alert comes from inside the box. If notatonix loses power, the network
+drops, or k3s dies, no email is sent. Detecting that needs an external check-in, such as `Watchdog` → healthchecks.io.
+That is not set up yet.
 
 ## Scraping your app (ServiceMonitor)
 

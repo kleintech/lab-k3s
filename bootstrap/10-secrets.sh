@@ -9,6 +9,8 @@ CLOUDFLARE_API_TOKEN="${CLOUDFLARE_API_TOKEN:-$(cat "$HOME/.config/cloudflare/ap
 GRAFANA_ADMIN_USER="${GRAFANA_ADMIN_USER:-admin}"
 GRAFANA_ADMIN_PASSWORD="${GRAFANA_ADMIN_PASSWORD:-}"
 GITHUB_RUNNER_TOKEN="${GITHUB_RUNNER_TOKEN:-}"
+# Gmail shows app passwords in groups of four; the spaces are not part of the password.
+ALERTMANAGER_SMTP_PASSWORD="${ALERTMANAGER_SMTP_PASSWORD:-}"; ALERTMANAGER_SMTP_PASSWORD="${ALERTMANAGER_SMTP_PASSWORD// /}"
 
 [[ -n "$CLOUDFLARE_API_TOKEN" ]] || { echo "CLOUDFLARE_API_TOKEN missing" >&2; exit 1; }
 if [[ -z "$GRAFANA_ADMIN_PASSWORD" ]]; then
@@ -35,5 +37,11 @@ if [[ -n "$GITHUB_RUNNER_TOKEN" ]]; then
     --from-literal=github_token="$GITHUB_RUNNER_TOKEN" --dry-run=client -o yaml | kubectl apply -f -
 else
   echo "GITHUB_RUNNER_TOKEN not set: skipping arc-runners/github-runner-token (CI runners will stay pending until it exists)"
+fi
+if [[ -n "$ALERTMANAGER_SMTP_PASSWORD" ]]; then
+  kubectl -n monitoring create secret generic alertmanager-smtp \
+    --from-literal=password="$ALERTMANAGER_SMTP_PASSWORD" --dry-run=client -o yaml | kubectl apply -f -
+else
+  echo "ALERTMANAGER_SMTP_PASSWORD not set: skipping monitoring/alertmanager-smtp (alert emails will fail to send until it exists)"
 fi
 echo "secrets in place."
