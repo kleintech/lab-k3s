@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Undo scripts/expose.sh for <name>.kleincogroup.com: remove the tunnel ingress rule, the
-# CNAME, the UDM split-horizon record, and last the Access app + policy expose.sh created.
+# CNAME, and last the Access app + policy expose.sh created.
 #
 #   scripts/unexpose.sh [-n] [--access-only] [--force] <name>
 #
@@ -93,16 +93,7 @@ done
 other="$(jq -c --argjson o "$ours" '[.[] | select(.id as $i | ($o | map(.id) | index($i)) | not) | {type,content,comment}]' <<<"$recs")"
 [[ "$(jq length <<<"$other")" == 0 ]] || warn "left alone (not created by expose.sh; --force removes a tunnel CNAME): $other"
 
-# ---- UDM (only the record expose.sh sets: -> LAB_NODE_IP) ------------------------------------
-udm_args=(); [[ "$DRY_RUN" == 1 ]] && udm_args+=(-n)
-if ! "$SCRIPTS_DIR/udm-dns.sh" "${udm_args[@]}" rm "$FQDN" "$LAB_NODE_IP"; then
-  warn "the UDM record could not be removed; LAN clients still resolve $FQDN to ${LAB_NODE_IP}."
-  warn "Fix ~/.config/lab-k3s/udm.env and run: scripts/udm-dns.sh rm $FQDN $LAB_NODE_IP"
-  udm_failed=1
-fi
-
 # ---- Access, last --------------------------------------------------------------------------------
 remove_access
 
-[[ "${udm_failed:-0}" == 0 ]] || exit 1
 log "done. Also drop host $FQDN from the service's Ingress."

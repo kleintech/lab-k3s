@@ -5,7 +5,7 @@
 | name | answered by | resolves to | who uses it |
 |------|-------------|-------------|-------------|
 | `*.lab.kleincogroup.com`, `lab.kleincogroup.com` | UDM Pro (LAN only) | `192.168.4.243` (the lab host) | every internal service |
-| `<name>.kleincogroup.com` (exposed services only) | UDM Pro on the LAN; Cloudflare everywhere else | LAN: `192.168.4.243`. Internet: Cloudflare edge, then the `homelab` tunnel | services published with `scripts/expose.sh` |
+| `<name>.kleincogroup.com` (exposed services only) | Cloudflare, everywhere including the LAN | Cloudflare edge, then the `homelab` tunnel | services published with `scripts/expose.sh` |
 
 Traefik on notatonix terminates TLS for both with wildcard Let's Encrypt certs. cert-manager
 gets them by DNS-01 through Cloudflare, so the lab never has to be reachable from the
@@ -38,18 +38,19 @@ cover the whole lab:
 
 The bare name needs its own record because a `*.` wildcard matches only names *below* it.
 
-Each exposed service also gets `<name>.kleincogroup.com A 192.168.4.243` on the UDM
-(`expose.sh` adds it). On the LAN, that name then goes straight to Traefik instead of out to
-Cloudflare and back through the tunnel. Off the LAN, public DNS sends it to the tunnel. One
-URL works in both places.
+Exposed services get **no** record on the UDM. `<name>.kleincogroup.com` resolves through
+public DNS everywhere, so LAN clients also go out to Cloudflare and back through the tunnel,
+and an Access gate applies to them too. (`expose.sh` used to add a split-horizon
+`<name>.kleincogroup.com A 192.168.4.243` record; see docs/cloudflare.md for cleaning up
+one left from then.)
 
 ## Managing the records: `scripts/udm-dns.sh`
 
 ```
 scripts/udm-dns.sh list
 scripts/udm-dns.sh ensure-lab                     # the two lab records above
-scripts/udm-dns.sh set foo.kleincogroup.com 192.168.4.243
-scripts/udm-dns.sh rm  foo.kleincogroup.com [192.168.4.243]   # optional: only records with that value
+scripts/udm-dns.sh set foo.lab.kleincogroup.com 192.168.4.243   # not for exposed <name>.kleincogroup.com names
+scripts/udm-dns.sh rm  foo.lab.kleincogroup.com [192.168.4.243]   # optional: only records with that value
 scripts/udm-dns.sh -n ...                         # dry run: print DNS writes, don't send them
                                                   # (with user/password it still logs in and out)
 ```

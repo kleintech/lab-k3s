@@ -14,8 +14,8 @@ The repo is on GitHub at `kleintech/lab-k3s`. **No secrets in this repo, ever.**
 - The UDM Pro answers `*.lab.kleincogroup.com` -> `192.168.4.243` for the LAN
   (split-horizon). Public DNS has no record for `*.lab.kleincogroup.com`.
 - Services exposed to the Internet get a **one-level** public name `<name>.kleincogroup.com`
-  (Cloudflare Universal SSL only covers one level). The UDM also answers that name with
-  `192.168.4.243`, so one link works on the LAN (direct) and off it (Cloudflare tunnel).
+  (Cloudflare Universal SSL only covers one level). It resolves only through public DNS,
+  so the LAN reaches it through the Cloudflare tunnel too; the UDM has no record for it.
 - cert-manager issues two wildcard certs by DNS-01 through Cloudflare, both in
   namespace `kube-system`:
   - secret `wildcard-lab-kleincogroup-com` for `*.lab.kleincogroup.com`
